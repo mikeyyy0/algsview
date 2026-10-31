@@ -180,6 +180,8 @@ class FeedPicker {
 class AppState(
     private val context: Context,
     private val scope: CoroutineScope,
+    /** Opens the system photo picker; the choice comes back to [onMapPicked]. */
+    private val openImagePicker: () -> Unit,
 ) {
     private val twitch = TwitchApi()
     private val prefs = context.getSharedPreferences("algsview", Context.MODE_PRIVATE)
@@ -454,6 +456,7 @@ class AppState(
             if (snapMode) "Drag to move; edges snap. Push hard to overlap. Pinch or use the corner to resize. Tap the lock when done."
             else "Drag to move, pinch or use the corner to resize. Tap the lock when done."
         } else null
+        if (!arranging) storeMapPanel()
         showChrome()
     }
 
@@ -690,6 +693,7 @@ class AppState(
     private fun layOut(width: Float, height: Float) {
         val ordered = bigFirst()
         bigTileId = ordered.firstOrNull()?.id
+        placeMaps(width, height)
 
         // Laptop mode: the main feed fills the screen above the hinge; the rest wait off screen,
         // still playing. The half below is the feed list and the map.
@@ -732,6 +736,175 @@ class AppState(
 
     /** The canvas's size in pixels, for keeping things on screen. */
     val canvasSize get() = canvasW to canvasH
+
+    // The map: images the person imported, with their pins.
+
+    val maps = mutableStateListOf<RefMap>().apply { addAll(RefMap.listFromJson(prefs.getString(PREF_MAPS, null))) }
+    /** The map on screen; null hides it. */
+    var currentMap by mutableStateOf(maps.firstOrNull { it.id == prefs.getString(PREF_CURRENT_MAP, null) })
+        private set
+    var mapSheetOpen by mutableStateOf(false)
+    /** The colour new pins get, as an index into [Accents]. */
+    var pinColor by mutableIntStateOf(0)
+    /** An image picked and waiting for its name. */
+    var mapToName by mutableStateOf<Uri?>(null)
+        private set
+    /** The photo picker is up: the app stopping for it isn't the person leaving. */
+    var pickingImage = false
+        private set
+    val mapPanel = MapPanel()
+    /** The map's window in laptop mode, below the hinge; placed and remembered on its own. */
+    val laptopMapPanel = MapPanel()
+    /** The map window on screen now. */
+    val activeMapPanel get() = if (laptopActive) laptopMapPanel else mapPanel
+    var mapOpacity by mutableFloatStateOf(0.9f)
+        private set
+    /** Keeps the map still while the feeds under it are arranged. */
+    var mapLocked by mutableStateOf(prefs.getBoolean(PREF_MAP_LOCKED, false))
+        private set
+
+    fun pickMapImage() {
+        pickingImage = true
+        openImagePicker()
+    }
+
+    fun onMapPicked(uri: Uri?) {
+        pickingImage = false
+        mapToName = uri
+    }
+
+    fun cancelMapImport() {
+        mapToName = null
+    }
+
+    /** Copies the picked image into the app's storage under [name], and shows it. */
+    fun importMap(name: String) {
+        val uri = mapToName ?: return
+        mapToName = null
+        val id = System.currentTimeMillis().toString()
+        val file = java.io.File(context.filesDir, "maps/$id").apply { parentFile?.mkdirs() }
+        val copied = runCatching {
+            context.contentResolver.openInputStream(uri)!!.use { input -> file.outputStream().use { input.copyTo(it) } }
+        }
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeFile(file.path, bounds)
+        if (copied.isFailure || bounds.outWidth <= 0) {
+            file.delete()
+            message = "That image couldn't be read."
+            return
+        }
+        val map = RefMap(id, name, file.path, bounds.outWidth, bounds.outHeight)
+        maps.add(map)
+        storeMaps()
+        chooseMap(map)
+    }
+
+    fun chooseMap(map: RefMap?) {
+        currentMap = map
+        prefs.edit().putString(PREF_CURRENT_MAP, map?.id).apply()
+        if (canvasW > 0f) placeMaps(canvasW, canvasH)
+    }
+
+    fun removeMap(map: RefMap) {
+        maps.removeAll { it.id == map.id }
+        java.io.File(map.file).delete()
+        storeMaps()
+        if (currentMap?.id == map.id) chooseMap(null)
+    }
+
+    /** A tap on the map, in fractions of the image: drops a pin, or takes away the one it hit. */
+    fun tapMap(x: Float, y: Float, reach: Float) {
+        val map = currentMap ?: return
+        updateMap(map.tapped(x, y, reach, pinColor))
+        showChrome()
+    }
+
+    fun clearPins() {
+        currentMap?.let { updateMap(it.copy(pins = emptyList())) }
+    }
+
+    private fun updateMap(map: RefMap) {
+        currentMap = map
+        maps.replaceAll { if (it.id == map.id) map else it }
+        storeMaps()
+    }
+
+    private fun storeMaps() {
+        prefs.edit().putString(PREF_MAPS, RefMap.listToJson(maps)).apply()
+    }
+
+    /** Each map window's first spot: where it was last left, else its default corner. */
+    private fun placeMaps(width: Float, height: Float) {
+        if (!mapPanel.placed) {
+            mapPanel.restore(prefs.getString(PREF_MAP_PANEL, null), width, height)?.let { mapOpacity = it }
+            if (!mapPanel.placed) {
+                val side = minOf(width, height) * 0.42f
+                mapPanel.place(Area(width - side, height - side, side, side))
+                mapPanel.placed = true
+            }
+        }
+        val bottom = hinge?.second
+        if (!laptopMapPanel.placed && bottom != null) {
+            laptopMapPanel.restore(prefs.getString(PREF_LAPTOP_MAP, null), width, height)
+            if (!laptopMapPanel.placed) {
+                val d = context.resources.displayMetrics.density
+                val gap = 12 * d
+                val corner = 40 * d
+                val left = width * LAPTOP_LIST_SHARE + gap
+                laptopMapPanel.place(Area(left, bottom + gap, width - left - corner, height - bottom - gap - corner))
+                laptopMapPanel.placed = true
+            }
+        }
+        keepMapOnScreen()
+    }
+
+    /** Pulls the map back onto the screen, no bigger than it, after the screen changes shape. */
+    private fun keepMapOnScreen() {
+        if (canvasW <= 0f) return
+        for (panel in listOf(mapPanel, laptopMapPanel)) {
+            if (!panel.placed) continue
+            panel.w = panel.w.coerceAtMost(canvasW)
+            panel.h = panel.h.coerceAtMost(canvasH)
+            panel.x = panel.x.coerceIn(0f, canvasW - panel.w)
+            panel.y = panel.y.coerceIn(0f, canvasH - panel.h)
+        }
+    }
+
+    /** Keeps the map's place, size, turn and opacity for next time. */
+    fun storeMapPanel() {
+        val panel = activeMapPanel
+        if (canvasW <= 0f || !panel.placed) return
+        prefs.edit().putString(if (laptopActive) PREF_LAPTOP_MAP else PREF_MAP_PANEL, panel.toJson(canvasW, canvasH, mapOpacity)).apply()
+    }
+
+    fun toggleMapLock() {
+        mapLocked = !mapLocked
+        prefs.edit().putBoolean(PREF_MAP_LOCKED, mapLocked).apply()
+    }
+
+    fun rotateMap(degrees: Float) {
+        activeMapPanel.rotation = (activeMapPanel.rotation + degrees).mod(360f)
+        storeMapPanel()
+    }
+
+    fun resetMapRotation() {
+        activeMapPanel.rotation = 0f
+        storeMapPanel()
+    }
+
+    /** Moves, resizes and turns the map, while arranging. */
+    fun arrangeMap(pan: androidx.compose.ui.geometry.Offset, zoom: Float, rotation: Float) {
+        val panel = activeMapPanel
+        panel.x += pan.x
+        panel.y += pan.y
+        if (zoom != 1f) panel.scale(zoom)
+        if (rotation != 0f) panel.rotation = (panel.rotation + rotation).mod(360f)
+        showChrome()
+    }
+
+    fun updateMapOpacity(value: Float) {
+        mapOpacity = value
+    }
 
     // The explanation overlay.
 
@@ -832,8 +1005,16 @@ class AppState(
             arrangements[screenKey(canvasW, canvasH)] =
                 tiles.associate { it.id to floatArrayOf(it.x / canvasW, it.y / canvasH, it.w / canvasW) }
         }
+        if (refit && mapPanel.placed) {
+            // The map keeps its place relative to the screen.
+            mapPanel.x *= width / canvasW
+            mapPanel.y *= height / canvasH
+            mapPanel.w *= width / canvasW
+            mapPanel.h *= height / canvasH
+        }
         canvasW = width
         canvasH = height
+        keepMapOnScreen()
         if (!refit) {
             keepOnScreen(width, height)
             return
@@ -946,6 +1127,7 @@ class AppState(
         // The first time the phone is held like a laptop while watching, ask.
         if (newHinge != null && tiles.isNotEmpty() && !prefs.getBoolean(PREF_LAPTOP_ASKED, false)) laptopPromptOpen = true
         if (laptopActive != was) relayoutGliding()
+        if (canvasW > 0f) placeMaps(canvasW, canvasH)
     }
 
     fun answerLaptopPrompt(use: Boolean) {
@@ -1088,6 +1270,7 @@ class AppState(
     /** Leaving the app without a pop-out (or closing the pop-out) pauses everything. */
     fun pauseForBackground() {
         saveWatch()
+        if (pickingImage) return
         if (tiles.isNotEmpty() && playing) togglePlay()
     }
 
@@ -1131,6 +1314,7 @@ class AppState(
         helpOpen = false
         helpAnchors.clear()
         layoutSheetOpen = false
+        mapSheetOpen = false
         arranging = false
         mutedAll = false
         playing = true
@@ -1213,6 +1397,11 @@ class AppState(
         private const val PREF_LAYOUT = "layout"
         private const val PREF_DEFAULT_LAYOUT = "defaultLayout"
         private const val PREF_SNAP = "snap"
+        private const val PREF_MAPS = "maps"
+        private const val PREF_CURRENT_MAP = "currentMap"
+        private const val PREF_MAP_PANEL = "mapPanel"
+        private const val PREF_LAPTOP_MAP = "laptopMapPanel"
+        private const val PREF_MAP_LOCKED = "mapLocked"
         /** How much of the width below the hinge the feed list takes in laptop mode. */
         const val LAPTOP_LIST_SHARE = 0.4f
         // Snap mode: edges pull together inside 12dp; a push past 56dp goes through.

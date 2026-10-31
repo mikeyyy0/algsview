@@ -19,6 +19,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -44,12 +46,15 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private lateinit var app: AppState
+    private val pickImage = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { app.onMapPicked(it) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         CrashReports.install(applicationContext)
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        app = AppState(this, lifecycleScope)
+        app = AppState(this, lifecycleScope) {
+            pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        }
         setContent { AppTheme { Root(app) } }
         app.loadVods()
         app.updater.checkOnLaunch()
@@ -168,6 +173,7 @@ private fun Root(app: AppState) {
     BackHandler {
         when {
             app.tileMenu != null -> app.closeTileMenu()
+            app.mapSheetOpen -> app.mapSheetOpen = false
             watching && app.picker == null -> app.stopAll()
             !app.back() -> Unit
         }

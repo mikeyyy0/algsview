@@ -46,6 +46,7 @@ private val BAR_HELP = listOf(
     "lock" to ("Arrange" to "move, resize, snap"),
     "add" to ("Add" to "more feeds, up to 4"),
     "layout" to ("Layout" to "presets, save your own"),
+    "map" to ("Map" to "your screenshot, with pins"),
     "scores" to ("Scores" to "your Battlefy link, beside the feeds"),
 )
 
@@ -152,6 +153,8 @@ private fun Legend(compact: Boolean, swapLine: Boolean) {
         Entry("Tap again", "the feed you hear: show or hide these controls")
         Group("Teams")
         Entry("Follow", "from + or a feed's menu: the feed moves when its team changes channel")
+        Group("Map")
+        Entry("Tap", "the map: drop a pin; tap a pin to remove it")
         Group("Leaving")
         Entry("Swipe home", "keep watching in a small window")
         Text(

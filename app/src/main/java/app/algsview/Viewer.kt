@@ -281,6 +281,10 @@ fun ViewerScreen(app: AppState) {
                     )
                 }
             }
+            // Above every tile (their z grows by one per touch), below the headers and controls.
+            app.currentMap?.let { map ->
+                Box(Modifier.fillMaxSize().zIndex(1.2e9f)) { MapPanelView(app, map) }
+            }
             // The feeds' headers, above everything else on the canvas.
             Box(Modifier.fillMaxSize().zIndex(1.5e9f)) {
                 app.tiles.forEach { tile -> key(tile.id) { TileHeader(app, tile) } }
@@ -320,6 +324,7 @@ fun ViewerScreen(app: AppState) {
 
     app.tileMenu?.let { TileMenuSheet(app, it) }
     if (app.layoutSheetOpen) LayoutSheet(app)
+    if (app.mapSheetOpen) MapSheet(app)
     LaptopPrompt(app)
 }
 
@@ -375,6 +380,7 @@ private fun TopChrome(app: AppState, cutout: Clearance) {
         Glyph(Icons.Rounded.Add, "Add a feed", modifier = Modifier.helpAnchor(app, "add")) { app.openPicker() }
         Glyph(Icons.Rounded.GridView, "Layout: ${app.layoutMode.label}", modifier = Modifier.helpAnchor(app, "layout")) { app.layoutSheetOpen = true; app.showChrome() }
         val activity = LocalContext.current as Activity
+        Glyph(Icons.Rounded.Map, "Map", modifier = Modifier.helpAnchor(app, "map")) { app.mapSheetOpen = true; app.showChrome() }
         Glyph(Icons.Rounded.Leaderboard, "Scores", modifier = Modifier.helpAnchor(app, "scores")) { app.openScores(activity) }
         Glyph(Icons.Rounded.HelpOutline, "What everything does", 22, onClick = app::showHelp)
     }
