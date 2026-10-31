@@ -15,3 +15,5 @@ keystore.properties
 *.keystore
 # Personal development notes.
 BACKLOG.md
+# Design mockups and build notes stay local.
+docs/

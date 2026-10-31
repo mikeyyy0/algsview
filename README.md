@@ -6,6 +6,10 @@ at once, freely arranged, with the team you care about followed from channel to 
 **Unofficial.** Not made or endorsed by EA, Respawn, the ALGS or Twitch. No game art ships with the
 app. It uses Twitch's private web API and the undocumented API behind algs.ea.com, either of which can change or break at any time.
 
+## Install
+
+Download the APK from the [latest release](https://github.com/mikeyyy0/algsview/releases/latest) and open it on your phone. Android 10 or newer. The app offers updates itself after that. Built and tested on a Pixel 10 Fold; other phones are untested.
+
 ## What it does
 
 - As many feeds as the phone can decode: Main + strip, Grid, or your own saved layouts, with snap or free arranging.
