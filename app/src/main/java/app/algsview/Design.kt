@@ -142,3 +142,6 @@ fun AppleSlider(
         },
     )
 }
+
+/** One colour per feed, in its header and on its map pins. */
+val Accents = listOf(Color(0xFFFF6B6B), Color(0xFF4DA3FF), Color(0xFF5BD97C), Color(0xFFFFC94D))

@@ -15,13 +15,10 @@ import android.os.Build
 import android.util.Rational
 import android.view.LayoutInflater
 import android.os.Bundle
-import android.webkit.WebSettings
-import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -47,21 +44,14 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private lateinit var app: AppState
-    private val login = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        app.onLoginFinished()
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         CrashReports.install(applicationContext)
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        val userAgent = WebSettings.getDefaultUserAgent(this).replace("; wv", "")
-        val chromeMajor = WebView.getCurrentWebViewPackage()?.versionName?.substringBefore('.') ?: "140"
-        app = AppState(this, lifecycleScope, userAgent, chromeMajor) {
-            login.launch(Intent(this, LoginActivity::class.java))
-        }
+        app = AppState(this, lifecycleScope)
         setContent { AppTheme { Root(app) } }
-        app.restore()
+        app.loadVods()
         app.updater.checkOnLaunch()
         // The fold's posture: half-open with the hinge running across the screen is laptop mode.
         lifecycleScope.launch {
@@ -112,7 +102,7 @@ class MainActivity : ComponentActivity() {
         app.pauseForBackground()
     }
 
-    /** Back in front: anything that lay over the app (the vote sheet) has gone. */
+    /** Back in front: anything that lay over the app (the scores sheet) has gone. */
     override fun onResume() {
         super.onResume()
         app.onResumed()
@@ -175,36 +165,28 @@ private fun PipSetup(app: AppState) {
 private fun Root(app: AppState) {
     PipSetup(app)
     val watching = app.tiles.isNotEmpty() && !app.browsing
-    BackHandler(enabled = app.auth == AuthState.SIGNED_IN) {
+    BackHandler {
         when {
             app.tileMenu != null -> app.closeTileMenu()
-            app.mapSheetOpen -> app.mapSheetOpen = false
             watching && app.picker == null -> app.stopAll()
             !app.back() -> Unit
         }
     }
 
     Box(Modifier.fillMaxSize().background(Ink.background)) {
-        when (app.auth) {
-            AuthState.CHECKING -> Unit
-            AuthState.SIGNED_OUT -> SignInScreen(app)
-            AuthState.SIGNED_IN -> {
-                AnimatedContent(
-                    targetState = watching,
-                    transitionSpec = { fadeIn(tween(Motion.SCREEN_MS, easing = EaseOut)) togetherWith fadeOut(tween(Motion.FADE_MS)) },
-                    label = "viewer",
-                ) { showViewer ->
-                    when {
-                        showViewer -> ViewerScreen(app)
-                        else -> Browse(app)
-                    }
-                }
+        AnimatedContent(
+            targetState = watching,
+            transitionSpec = { fadeIn(tween(Motion.SCREEN_MS, easing = EaseOut)) togetherWith fadeOut(tween(Motion.FADE_MS)) },
+            label = "viewer",
+        ) { showViewer ->
+            when {
+                showViewer -> ViewerScreen(app)
+                else -> Browse(app)
             }
         }
         if (!app.inPip) app.picker?.let { FeedPickerSheet(app, it) }
         // Offered while browsing, never over a stream being watched.
         if (!app.inPip && !watching) UpdatePrompt(app.updater)
-        if (!app.inPip) PlanPrompt(app)
         if (!app.inPip && !watching) CrashPrompt(app)
     }
 }
@@ -234,13 +216,9 @@ private fun Browse(app: AppState) {
             label = "browse",
         ) { stack ->
             CompositionLocalProvider(LocalSharedScope provides this@SharedTransitionLayout, LocalPageScope provides this) {
-                when (val screen = stack.last()) {
+                when (stack.last()) {
                     Screen.Home -> HomeScreen(app)
-                    is Screen.Weekend -> WeekendScreen(app, screen.weekend, screen.artKey)
                     Screen.Settings -> SettingsScreen(app)
-                    Screen.Calendar -> CalendarScreen(app)
-                    is Screen.Collection -> CollectionScreen(app, screen.pageId, screen.title)
-                    Screen.Archive -> ArchiveScreen(app)
                 }
             }
         }

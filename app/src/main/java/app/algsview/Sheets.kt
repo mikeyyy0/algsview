@@ -1,13 +1,8 @@
 package app.algsview
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,54 +13,57 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.ArrowBackIosNew
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 
 private val Rounded = RoundedCornerShape(14.dp)
 
-/** What each broadcast feed is, in plain words. */
-private fun describe(channel: Channel): Pair<String, String?> = when (channel.title.uppercase()) {
-    "F1 LIVE" -> "F1 Live" to "Main broadcast with timing and analysis"
-    "INTERNATIONAL" -> "International" to "The world feed, as shown on TV"
-    "TRACKER" -> "Driver tracker" to "Every car on a live map"
-    "DATA" -> "Data" to "Timing tower and gaps"
-    else -> channel.title.lowercase().replaceFirstChar { it.uppercase() } to null
-}
+@Composable
+private fun fieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = Ink.primary,
+    unfocusedTextColor = Ink.primary,
+    cursorColor = Ink.primary,
+    focusedBorderColor = Ink.secondary,
+    unfocusedBorderColor = Ink.surfaceHigh,
+)
 
 /**
- * Picks a session's feeds. Broadcast feeds first, then every driver's onboard. Picked cards turn
- * white; feeds already playing say so.
+ * Picks what to watch: follow a team by name, then the live team channels with the team each one
+ * has now, then the broadcast, then any Twitch channel or link. Rows picked show a check; feeds
+ * already on screen say so.
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FeedPickerSheet(app: AppState, picker: FeedPicker) {
     ModalBottomSheet(
@@ -80,7 +78,7 @@ fun FeedPickerSheet(app: AppState, picker: FeedPicker) {
             Column(
                 Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)
             ) {
-                Text(picker.title, style = Type.title2)
+                Text("Add feeds", style = Type.title2)
                 Text(
                     picker.note ?: if (app.tiles.isEmpty()) "Pick up to 4. You can switch any of them while watching."
                     else "Feeds on screen are already picked. Unpick one to make room for another.",
@@ -88,44 +86,60 @@ fun FeedPickerSheet(app: AppState, picker: FeedPicker) {
                     modifier = Modifier.padding(top = 4.dp),
                 )
 
-                val channels = picker.channels
-                when {
-                    picker.error != null -> Text(picker.error!!, style = Type.subhead, modifier = Modifier.padding(vertical = 24.dp))
-                    channels == null -> Text("Loading feeds…", style = Type.subhead, modifier = Modifier.padding(vertical = 24.dp))
-                    else -> {
-                        val broadcast = channels.filter { it.racingNumber == null }
-                        val onboards = channels.filter { it.racingNumber != null }
+                OutlinedTextField(
+                    value = picker.search,
+                    onValueChange = { picker.search = it },
+                    placeholder = { Text("Search for a team to follow", style = Type.body.copy(color = Ink.secondary)) },
+                    singleLine = true,
+                    colors = fieldColors(),
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                )
+                val teams = app.liveTeams
+                val query = picker.search.trim()
+                if (query.isNotEmpty()) {
+                    val names = teams.map { Teams.teamName(it.title) }.filter { it.contains(query, ignoreCase = true) }.distinct()
+                    names.forEach { FollowRow(app, picker, it) }
+                    // A team that isn't on air yet can be followed all the same.
+                    if (names.none { it.equals(query, ignoreCase = true) }) FollowRow(app, picker, query)
+                }
 
-                        if (broadcast.isNotEmpty()) {
-                            Text("Broadcast", style = Type.headline, modifier = Modifier.padding(top = 24.dp, bottom = 10.dp))
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                broadcast.forEach { channel ->
-                                    val (name, about) = describe(channel)
-                                    PickCard(app, picker, channel, Modifier.widthIn(min = 150.dp, max = 220.dp)) { onColor ->
-                                        Text(name, style = Type.headline.copy(color = onColor))
-                                        about?.let { Text(it, style = Type.footnote.copy(color = onColor.copy(alpha = 0.65f))) }
-                                    }
-                                }
-                            }
+                if (teams.isNotEmpty()) {
+                    Text("Team channels", style = Type.headline, modifier = Modifier.padding(top = 24.dp, bottom = 4.dp))
+                    teams.filter { query.isEmpty() || it.title.contains(query, ignoreCase = true) }.forEach { stream ->
+                        PickRow(app, picker, app.channelOf(stream), Teams.channelLabel(stream.login))
+                    }
+                } else {
+                    Text("No team channels are live right now.", style = Type.subhead, modifier = Modifier.padding(top = 24.dp))
+                }
+
+                val others = app.liveOthers
+                if (others.isNotEmpty()) {
+                    Text("Broadcast", style = Type.headline, modifier = Modifier.padding(top = 24.dp, bottom = 4.dp))
+                    others.forEach { stream -> PickRow(app, picker, app.channelOf(stream), stream.title.takeIf { stream.login == Teams.BROADCAST }) }
+                }
+
+                Text("Add channel or link", style = Type.headline, modifier = Modifier.padding(top = 24.dp, bottom = 8.dp))
+                val target = parseTwitchTarget(picker.link)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = picker.link,
+                        onValueChange = { picker.link = it },
+                        placeholder = { Text("Twitch channel, or twitch.tv/videos/…", style = Type.body.copy(color = Ink.secondary)) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
+                        colors = fieldColors(),
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (target != null) {
+                        Spacer(Modifier.size(10.dp))
+                        SecondaryButton("Add") {
+                            app.togglePick(target)
+                            picker.link = ""
                         }
-                        if (onboards.isNotEmpty()) {
-                            Text("Onboards", style = Type.headline, modifier = Modifier.padding(top = 24.dp, bottom = 10.dp))
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                onboards.forEach { channel ->
-                                    PickCard(app, picker, channel, Modifier.width(104.dp)) { onColor ->
-                                        Text(
-                                            "${channel.racingNumber}",
-                                            style = Type.title1.copy(color = channel.teamColor?.let { Color(it) } ?: onColor),
-                                        )
-                                        Text(channel.tla ?: "", style = Type.headline.copy(color = onColor))
-                                        Text(channel.driverName ?: "", style = Type.caption.copy(color = onColor.copy(alpha = 0.65f)), maxLines = 1)
-                                    }
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(16.dp))
                     }
                 }
+                picker.selected.filter { it.login !in app.streams && it.follow == null }.forEach { PickRow(app, picker, it, null) }
+                Spacer(Modifier.height(16.dp))
             }
 
             val adds = picker.selected.size
@@ -147,31 +161,35 @@ fun FeedPickerSheet(app: AppState, picker: FeedPicker) {
 }
 
 @Composable
-private fun PickCard(
-    app: AppState,
-    picker: FeedPicker,
-    channel: Channel,
-    modifier: Modifier,
-    content: @Composable (onColor: Color) -> Unit,
-) {
-    val playing = app.isPlaying(picker.contentId, channel)
-    val dropping = channel in picker.removing
-    // On screen counts as picked until unpicked.
-    val picked = channel in picker.selected || (playing && !dropping)
-    val background by animateColorAsState(if (picked) Ink.primary else Ink.surfaceHigh, tween(Motion.PRESS_MS * 2, easing = EaseOut), label = "pick")
-    val onColor = if (picked) Color.Black else Ink.primary
-    Box(
-        modifier
-            .pressable { app.togglePick(channel) }
-            .clip(Rounded)
-            .background(background)
-            .padding(14.dp)
+private fun FollowRow(app: AppState, picker: FeedPicker, name: String) {
+    val channel = app.followChannel(name)
+    val picked = picker.selected.any { it.key == channel.key } || app.tiles.any { it.channel.key == channel.key }
+    Row(
+        Modifier.fillMaxWidth().pressable(scaleTo = 0.99f) { app.togglePick(channel) }.padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column { content(onColor) }
+        Text("Follow $name", style = Type.body, modifier = Modifier.weight(1f))
+        if (picked) Icon(Icons.Rounded.Check, null, tint = Ink.primary, modifier = Modifier.size(20.dp))
+    }
+}
+
+@Composable
+private fun PickRow(app: AppState, picker: FeedPicker, channel: Channel, detail: String?) {
+    val playing = app.isPlaying(channel)
+    val dropping = picker.removing.any { it.login == channel.login && it.vodId == channel.vodId }
+    val picked = picker.selected.any { it.key == channel.key }
+    Row(
+        Modifier.fillMaxWidth().pressable(scaleTo = 0.99f) { app.togglePick(channel) }.padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(channel.title, style = Type.body.copy(color = if (dropping) Ink.secondary else Ink.primary), maxLines = 1)
+            detail?.let { Text(it, style = Type.footnote, maxLines = 1) }
+        }
         when {
-            playing && !dropping -> Text("On", style = Type.caption.copy(color = Color.Black), modifier = Modifier.align(Alignment.TopEnd))
-            dropping -> Text("Off", style = Type.caption, modifier = Modifier.align(Alignment.TopEnd))
-            picked -> Icon(Icons.Rounded.Check, null, tint = Color.Black, modifier = Modifier.align(Alignment.TopEnd).size(18.dp))
+            playing && !dropping -> Text("On", style = Type.footnote.copy(color = Ink.primary))
+            dropping -> Text("Off", style = Type.footnote)
+            picked -> Icon(Icons.Rounded.Check, null, tint = Ink.primary, modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -220,11 +238,18 @@ internal fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> U
     }
 }
 
+/** A saved line of text, in a settings group. */
 @Composable
-private fun ChoiceRow(label: String, chosen: Boolean, onClick: () -> Unit) {
-    SettingRow(label, onClick = onClick) {
-        if (chosen) Icon(Icons.Rounded.Check, null, tint = Ink.primary, modifier = Modifier.size(20.dp))
-    }
+private fun SettingField(label: String, value: String, hint: String, onChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        label = { Text(label, style = Type.footnote) },
+        placeholder = { Text(hint, style = Type.body.copy(color = Ink.secondary)) },
+        singleLine = true,
+        colors = fieldColors(),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+    )
 }
 
 @Composable
@@ -244,57 +269,24 @@ fun SettingsScreen(app: AppState) {
             Text("Settings", style = Type.largeTitle, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
         }
         item {
-            Group("Account") {
-                SettingRow("F1 TV", app.tier.lowercase().replaceFirstChar { it.uppercase() })
-                SettingRow("Manage F1 TV account", onClick = app::openAccountPage) {
-                    Icon(Icons.AutoMirrored.Rounded.OpenInNew, "Opens in your browser", tint = Ink.secondary, modifier = Modifier.size(18.dp))
-                }
-                SettingRow("Sign out", onClick = app::signOut, trailing = null)
-            }
-        }
-        item {
-            Group("Playback", footer = "Applies to feeds you start from now on.") {
-                Text("Commentary", style = Type.footnote, modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp))
-                Settings.COMMENTARY.forEach { (code, name) ->
-                    ChoiceRow(name, s.commentary == code) { s.updateCommentary(code) }
-                }
-                Spacer(Modifier.height(6.dp))
-                SwitchRow("Subtitles", s.subtitles, s::updateSubtitles)
+            Group("Playback", footer = "With 3 or 4 feeds, the ones you aren't listening to drop to 480p or 360p. The one with the audio always asks for the best.") {
+                SwitchRow("Lower quality on quiet feeds", s.quietQuality, s::updateQuietQuality)
                 SwitchRow("Stream stats on tiles", s.showStats, s::updateShowStats)
             }
         }
         item {
-            Group(
-                "Live races",
-                footer = "With 6 laps to go in a live Grand Prix, a note offers to open F1's Driver of the Day vote.",
-            ) {
-                SwitchRow("Driver of the Day reminder", s.votePrompt, s::updateVotePrompt)
-            }
-        }
-        item {
-            Group(
-                "Track map",
-                footer = "How far the map runs behind the picture. F1 stamps its video about 7 seconds after its timing data.",
-            ) {
-                SettingRow("Timing offset", "%+.0f s".format(app.mapOffsetMs / 1000f))
-                SettingRow("Reset to −7 s", onClick = { app.nudgeMapOffset(-7_000L - app.mapOffsetMs) })
-            }
-        }
-        item {
-            Group(
-                "Advanced",
-                footer = "Software DRM is what desktop browsers use, and it's what lets four feeds play at once. " +
-                    "Change the stream type only if feeds won't play.",
-            ) {
-                SwitchRow("Software DRM", s.softwareDrm, s::updateSoftwareDrm)
-                Text("Stream type", style = Type.footnote, modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 2.dp))
-                F1TvApi.PLATFORMS.forEach { platform ->
-                    val name = platform.lowercase().split('_').joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
-                        .replace("Dash", "DASH").replace("Hls", "HLS")
-                    ChoiceRow(if (platform == "WEB_DASH") "$name (default)" else name, s.platform == platform) {
-                        app.choosePlatform(platform)
-                    }
+            Group("Team channels", footer = "Numbered channels are the prefix plus 1 up to the count. For more than one set, separate prefixes with commas.") {
+                SettingField("Channel prefix", s.teamPrefix, Teams.DEFAULT_PREFIX, s::updateTeamPrefix)
+                SettingRow("How many") {
+                    Text("−", style = Type.title2, modifier = Modifier.pressable { s.updateTeamCount(s.teamCount - 1) }.padding(horizontal = 14.dp, vertical = 6.dp))
+                    Text("${s.teamCount}", style = Type.body)
+                    Text("+", style = Type.title2, modifier = Modifier.pressable { s.updateTeamCount(s.teamCount + 1) }.padding(horizontal = 14.dp, vertical = 6.dp))
                 }
+            }
+        }
+        item {
+            Group("Scores", footer = "The Scores button opens this link beside the feeds.") {
+                SettingField("Battlefy tournament link", s.battlefyUrl, "battlefy.com/…", s::updateBattlefyUrl)
             }
         }
         item {
@@ -303,7 +295,7 @@ fun SettingsScreen(app: AppState) {
             }
         }
         item {
-            val context = androidx.compose.ui.platform.LocalContext.current
+            val context = LocalContext.current
             Group(
                 "Help",
                 footer = "Opens a GitHub issue with your app version and phone model filled in. Nothing is sent until you submit it.",
@@ -313,9 +305,9 @@ fun SettingsScreen(app: AppState) {
         }
         item {
             Text(
-                "ALGS View ${BuildConfig.VERSION_NAME} · built ${BuildConfig.BUILT_AT}",
+                "ALGS View ${BuildConfig.VERSION_NAME} · built ${BuildConfig.BUILT_AT}\nUnofficial. Not made or endorsed by EA, Respawn, ALGS or Twitch.",
                 style = Type.caption,
-                modifier = Modifier.padding(start = 36.dp, top = 28.dp, bottom = 40.dp),
+                modifier = Modifier.padding(start = 36.dp, end = 36.dp, top = 28.dp, bottom = 40.dp),
             )
         }
     }
@@ -325,54 +317,5 @@ fun SettingsScreen(app: AppState) {
         titleIn = { ((scrolled - span * 0.6f) / (span * 0.4f)).coerceIn(0f, 1f) },
         leading = { backdrop -> GlyphButton(Icons.Rounded.ArrowBackIosNew, "Back", backdrop = backdrop) { app.back() } },
     )
-    }
-}
-
-/**
- * Shown when the account signed in has no F1 TV plan with video, so nothing would play. Says
- * why, and how US viewers with Apple TV get Premium onto their F1 TV account: by linking their
- * Apple account to it on F1 TV. Offers F1 TV's site, or signing in with another account.
- */
-@Composable
-fun PlanPrompt(app: AppState) {
-    if (!app.planPromptOpen) return
-    androidx.compose.ui.window.Dialog(onDismissRequest = { app.closePlanPrompt(false) }) {
-        Column(
-            Modifier
-                .widthIn(max = 460.dp)
-                .clip(androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
-                .background(Ink.surface)
-                .padding(24.dp)
-        ) {
-            val context = androidx.compose.ui.platform.LocalContext.current
-            Text("This account can't play video yet", style = Type.title2)
-            Text(
-                "You're signed in, but this F1 TV account doesn't have a plan that includes video, so F1 won't stream anything to it.",
-                style = Type.subhead,
-                modifier = Modifier.padding(top = 8.dp),
-            )
-            Text(
-                "Get F1 TV Premium with Apple TV in the US? Link your Apple account to this F1 TV account on F1 TV's website or app (look for Activate). Once your F1 account shows Premium, reopen ALGS View.",
-                style = Type.subhead,
-                modifier = Modifier.padding(top = 10.dp),
-            )
-            Row(
-                Modifier.fillMaxWidth().padding(top = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
-            ) {
-                SecondaryButton("Open F1 TV") {
-                    context.startActivity(
-                        android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://f1tv.formula1.com"))
-                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                    )
-                }
-                PrimaryButton("OK") { app.closePlanPrompt(false) }
-            }
-            Text(
-                "Use another account",
-                style = Type.subhead,
-                modifier = Modifier.align(Alignment.End).pressable { app.closePlanPrompt(true) }.padding(top = 14.dp),
-            )
-        }
     }
 }

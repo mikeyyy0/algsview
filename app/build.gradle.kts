@@ -23,8 +23,8 @@ android {
         minSdk = 29
         targetSdk = 35
         // Bump both for every build that goes to the phone, so it's clear which one is installed.
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = 2
+        versionName = "0.2"
         val builtAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("MMM d, HH:mm"))
         buildConfigField("String", "BUILT_AT", "\"$builtAt\"")
         // Where updates come from (owner/repo on GitHub). A fork points this at its own releases.
@@ -93,14 +93,13 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
     implementation("androidx.media3:media3-exoplayer:$media3")
-    implementation("androidx.media3:media3-exoplayer-dash:$media3")
     implementation("androidx.media3:media3-exoplayer-hls:$media3")
     implementation("androidx.media3:media3-ui:$media3")
-    // WebSocket for F1's live timing feed (SignalR Core).
+    // Twitch's web API.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // Fold posture (half-open like a laptop) for laptop mode.
     implementation("androidx.window:window:1.3.0")
-    // Chrome sheet for the Driver of the Day vote, so the race stays on screen.
+    // Chrome sheet for the scores, so the feeds stay on screen.
     implementation("androidx.browser:browser:1.8.0")
 
     testImplementation("junit:junit:4.13.2")

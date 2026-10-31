@@ -46,8 +46,7 @@ private val BAR_HELP = listOf(
     "lock" to ("Arrange" to "move, resize, snap"),
     "add" to ("Add" to "more feeds, up to 4"),
     "layout" to ("Layout" to "presets, save your own"),
-    "radio-button" to ("Radio" to "team radio, transcribed"),
-    "map" to ("Map" to "style, timing, opacity"),
+    "scores" to ("Scores" to "your Battlefy link, beside the feeds"),
 )
 
 /**
@@ -111,7 +110,6 @@ fun HelpOverlay(app: AppState, width: Float, height: Float, feedScale: Float, co
             // Where the feeds really are on screen.
             val feeds = app.tiles.map { t -> t to onScreen(Rect(t.x, t.y, t.x + t.w, t.y + t.h), width, height, feedScale) }
                 .filter { (_, r) -> r.left < width && r.right > 0f }
-            val radio = anchors["radio"]?.takeIf { app.radioOpen }
             // Big and small feeds only mean something on the big screen in main + strip.
             val main = feeds.firstOrNull { (t, _) -> !compact && app.tiles.size > 1 && app.isMainTile(t) }
 
@@ -123,7 +121,7 @@ fun HelpOverlay(app: AppState, width: Float, height: Float, feedScale: Float, co
             // Centred in its space, but never up into the top bar's labels: a legend taller than
             // the space starts just below them and runs on down.
             Callout(area.center.x, area.center.y, width, side = Side.CENTRE, maxWidth = legendWidth, minTop = belowBar) {
-                Legend(compact = main == null && compact, swapLine = main != null, radio = radio != null)
+                Legend(compact = main == null && compact, swapLine = main != null)
             }
 
             anchors["mute"]?.takeIf { app.chromeVisible && !app.arranging }?.let { r ->
@@ -142,22 +140,18 @@ private val TERM_WIDTH = 120.dp
  * does on the right, in short groups.
  */
 @Composable
-private fun Legend(compact: Boolean, swapLine: Boolean, radio: Boolean) {
+private fun Legend(compact: Boolean, swapLine: Boolean) {
     Column {
         Group("Feeds")
-        Entry("Tap", "a feed, then a car on the map: its onboard goes there")
+        Entry("Tap", "a feed: its audio comes on, and it gets the best quality")
         when {
             swapLine -> Entry("Double-tap", "a small feed: it swaps into the big spot")
             compact -> Entry("Double-tap", "a feed: it fills the screen; again to go back")
         }
-        Entry("Hold", "a feed: switch it, take its audio, pin it")
-        Entry("Tap the picture", "show or hide these controls")
-        Group("Map")
-        Entry("Tap a car", "bring up its onboard")
-        if (radio) {
-            Group("Team radio")
-            Entry("Tap a clip", "hear it; drag the panel's title to move it")
-        }
+        Entry("Hold", "a feed: switch it, follow its team, pin it")
+        Entry("Tap again", "the feed you hear: show or hide these controls")
+        Group("Teams")
+        Entry("Follow", "from + or a feed's menu: the feed moves when its team changes channel")
         Group("Leaving")
         Entry("Swipe home", "keep watching in a small window")
         Text(

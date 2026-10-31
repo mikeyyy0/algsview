@@ -192,7 +192,7 @@ private fun ArtCard(
     ) {
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).sharedArt(artKey, cornerRadius = 12).clip(CardShape).background(Ink.surface)) {
             AsyncImage(
-                model = F1TvApi.picture(image, 640, 360),
+                model = image,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 colorFilter = if (upcoming) Grayscale else null,
@@ -300,172 +300,6 @@ internal fun TopBar(
     }
 }
 
-/**
- * A page led by artwork, after Apple's TV app: the artwork stays put while the page scrolls up
- * over it, darkening as it goes, and the top bar forms out of nothing as you scroll. [artKey]
- * links the artwork to the card it was opened from, so one grows into the other.
- */
-@Composable
-private fun ArtPage(
-    image: String?,
-    artKey: String?,
-    title: String,
-    listState: LazyListState,
-    leading: (@Composable (backdrop: Float) -> Unit)? = null,
-    trailing: (@Composable (backdrop: Float) -> Unit)? = null,
-    /** In place of the one image: artwork that changes, as on home's carousel. */
-    backdrop: (@Composable () -> Unit)? = null,
-    /** In place of [hero]'s column: the whole hero area, for content that fills it. */
-    heroBox: (@Composable BoxScope.() -> Unit)? = null,
-    hero: @Composable ColumnScope.() -> Unit = {},
-    rows: LazyListScope.() -> Unit,
-) {
-    val density = LocalDensity.current
-    val context = LocalContext.current
-    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
-    BoxWithConstraints(Modifier.fillMaxSize().background(Ink.background)) {
-        val heroHeight = minOf(maxWidth * 9f / 16f, screenHeight * 0.62f).coerceAtLeast(320.dp)
-        val heroPx = with(density) { heroHeight.toPx() }
-        // How far the page has scrolled, capped once the artwork is fully covered.
-        val scrolled by remember(heroPx) {
-            derivedStateOf {
-                if (listState.firstVisibleItemIndex > 0) heroPx
-                else listState.firstVisibleItemScrollOffset.toFloat().coerceAtMost(heroPx)
-            }
-        }
-
-        Box(Modifier.fillMaxWidth().height(heroHeight)) {
-            if (backdrop != null) backdrop()
-            else AsyncImage(
-                // The card's smaller image, already in memory, stands in until this size loads.
-                model = remember(image) {
-                    ImageRequest.Builder(context)
-                        .data(F1TvApi.picture(image, 1920, 1080))
-                        .placeholderMemoryCacheKey(F1TvApi.picture(image, 640, 360))
-                        .crossfade(Motion.FADE_MS)
-                        .build()
-                },
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().sharedArt(artKey),
-            )
-            Box(
-                Modifier.fillMaxSize().background(
-                    Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.35f),
-                        0.25f to Color.Transparent,
-                        0.5f to Color.Transparent,
-                        1f to Ink.background,
-                    )
-                )
-            )
-            Box(
-                Modifier.fillMaxSize().background(
-                    Brush.horizontalGradient(0f to Color.Black.copy(alpha = 0.45f), 0.6f to Color.Transparent)
-                )
-            )
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = 0.75f * (scrolled / heroPx) }
-                    .background(Color.Black)
-            )
-        }
-
-        LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
-            item {
-                Box(Modifier.fillMaxWidth().height(heroHeight)) {
-                    if (heroBox != null) heroBox()
-                    else Column(
-                        Modifier.align(Alignment.BottomStart).padding(horizontal = SidePadding, vertical = 8.dp).widthIn(max = 560.dp),
-                        content = hero,
-                    )
-                }
-            }
-            rows()
-        }
-
-        TopBar(
-            title = title,
-            fill = { ((scrolled - heroPx * 0.35f) / (heroPx * 0.35f)).coerceIn(0f, 1f) },
-            titleIn = { ((scrolled - heroPx * 0.62f) / (heroPx * 0.2f)).coerceIn(0f, 1f) },
-            leading = leading,
-            trailing = trailing,
-        )
-    }
-}
-
-private val DayFormat = SimpleDateFormat("MMM d", Locale.getDefault())
-
-private fun dates(w: WeekendInfo) = "${DayFormat.format(Date(w.startMs))} – ${DayFormat.format(Date(w.endMs))}"
-
-/**
- * A weekend's schedule as F1 TV lays it out: a column per day, each event with its start time,
- * a live mark while it runs, or a replay mark once it can be watched. Tapping one plays it.
- */
-@Composable
-private fun WeekendSchedule(
-    app: AppState,
-    weekend: WeekendInfo,
-    events: List<CatalogItem>,
-    sessions: List<CatalogItem>,
-    title: String,
-    action: Pair<String, () -> Unit>? = null,
-) {
-    val days = remember(events) {
-        events.filter { it.startMs > 0 }.groupBy { DAY.format(java.util.Date(it.startMs)) }.toList()
-    }
-    if (days.isEmpty()) return
-    val state = rememberScrollState()
-    val density = LocalDensity.current
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val gap = 12.dp
-        val perRow = when {
-            maxWidth >= 1000.dp -> 4f
-            maxWidth >= 600.dp -> 3.12f
-            else -> 1.2f
-        }.coerceAtMost(days.size.toFloat())
-        val dayWidth = ((maxWidth - SidePadding * 2 - gap * (perRow.toInt() - 1).coerceAtLeast(0)) / perRow).coerceAtLeast(225.dp)
-        // Opens with the day to watch first in the row.
-        LaunchedEffect(weekend.meetingKey, perRow) {
-            if (state.value == 0) {
-                val now = System.currentTimeMillis()
-                val starts = events.filter { it.startMs > 0 }.map { it.startMs }
-                val inWeekend = now in (starts.min() - DAY_MS)..(starts.max() + DAY_MS)
-                val today = if (inWeekend) days.indexOfFirst { it.first == DAY.format(java.util.Date(now)) } else -1
-                val first = scheduleDayToOpen(days.map { it.second }, today, now, sessions.map { it.contentId }.toSet()) { app.history[it]?.finished == true }
-                if (first > 0) state.scrollTo(with(density) { ((dayWidth + gap) * first).roundToPx() })
-            }
-        }
-        Column {
-            Row(
-                Modifier.fillMaxWidth().padding(start = SidePadding, end = SidePadding, bottom = 8.dp),
-                verticalAlignment = Alignment.Bottom,
-            ) {
-                Text(title, style = Type.title2, modifier = Modifier.weight(1f))
-                action?.let { (label, onClick) -> HeaderAction(label, onClick) }
-            }
-            // Every day is laid out, not just the visible ones, so the row keeps the tallest day's height while scrolling.
-            Row(
-                Modifier.horizontalScroll(state).padding(horizontal = SidePadding),
-                horizontalArrangement = Arrangement.spacedBy(gap),
-            ) {
-                days.forEach { (day, list) ->
-                    Column(Modifier.width(dayWidth)) {
-                        Text(day.uppercase(), style = Type.footnote.copy(color = Ink.primary, fontWeight = FontWeight.Bold), modifier = Modifier.padding(top = 2.dp, bottom = 4.dp))
-                        Box(Modifier.fillMaxWidth().height(1.dp).background(Ink.tertiary))
-                        Spacer(Modifier.height(8.dp))
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            list.forEach { ScheduleRow(app, it) }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/** The link beside a row's title: white with an arrow, so it reads as something to tap. */
 @Composable
 private fun HeaderAction(label: String, onClick: () -> Unit) {
     Row(
@@ -477,571 +311,75 @@ private fun HeaderAction(label: String, onClick: () -> Unit) {
     }
 }
 
-/** One event as a button, the way F1 TV draws them: series tab, title, then its time or how to watch. */
-@Composable
-private fun ScheduleRow(app: AppState, item: CatalogItem) {
-    // Ended but not up as a replay yet: still its time, and a tap says so.
-    val playable = item.live || (!item.upcoming && item.kind != "LIVE_EVENT")
-    val time = CLOCK.format(java.util.Date(item.startMs))
-    val context = LocalContext.current
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .height(IntrinsicSize.Min)
-            .heightIn(min = 40.dp)
-            .pressable {
-                when {
-                    playable -> app.watch(item)
-                    item.upcoming -> Toast.makeText(context, "${item.title} starts at $time.", Toast.LENGTH_SHORT).show()
-                    else -> Toast.makeText(context, "The ${item.title} replay isn't up yet.", Toast.LENGTH_SHORT).show()
-                }
-            }
-            .clip(RoundedCornerShape(4.dp))
-            .background(if (playable) ScheduleReady else Ink.surface),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // Watchable now is lit in red; still to come stays dark and grey.
-        Box(Modifier.width(3.dp).fillMaxHeight().background(if (playable) ScheduleRed else Ink.tertiary))
-        Box(Modifier.width(23.dp).fillMaxHeight().background(if (playable) ScheduleTab else Ink.surfaceHigh), contentAlignment = Alignment.Center) {
-            Text("F1", style = Type.caption.copy(fontSize = 11.sp, color = if (playable) Ink.primary else Ink.secondary, fontWeight = FontWeight.Bold))
-        }
-        Text(
-            item.title,
-            style = Type.footnote.copy(color = if (playable) Ink.primary else Ink.secondary, fontWeight = FontWeight.Medium, lineHeight = 16.sp),
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 4.dp),
-        )
-        Box(Modifier.width(1.dp).fillMaxHeight().padding(vertical = 12.dp).background(Ink.tertiary))
-        Box(Modifier.padding(horizontal = 8.dp), contentAlignment = Alignment.Center) {
-            when {
-                item.live -> LiveMark()
-                playable -> Icon(Icons.Rounded.Replay, contentDescription = "Watch", tint = Ink.primary, modifier = Modifier.size(18.dp))
-                else -> Text(time, style = Type.footnote.copy(color = Ink.secondary, fontWeight = FontWeight.SemiBold))
-            }
-        }
-    }
-}
-
-private val ScheduleRed = Color(0xFFE10600)
-private val ScheduleTab = Color(0xFF8A0F0A)
-private val ScheduleReady = Color(0xFF3A3A3C)
-
-private const val DAY_MS = 24 * 60 * 60 * 1000L
-private val DAY = java.text.SimpleDateFormat("EEEE", java.util.Locale.getDefault())
-private val CLOCK = java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT)
-
-private fun roundLabel(w: WeekendInfo) = w.round?.let { "Round $it" } ?: "Testing"
-
-/** When it runs and how long, or just when for one that hasn't started. */
-private fun sessionLine(item: CatalogItem) =
-    if (item.upcoming) item.subtitle.orEmpty()
-    else listOfNotNull(item.subtitle, duration(item.durationSec)).joinToString(" · ")
+// Home.
 
 private fun duration(seconds: Int): String? {
     if (seconds <= 0) return null
-    val m = seconds / 60
-    return if (m >= 60) "${m / 60}h ${m % 60}m" else "${m}m"
+    val h = seconds / 3600
+    val m = seconds / 60 % 60
+    return if (h > 0) "${h}h ${m}m" else "${m}m"
 }
 
-// Screens.
-
-@Composable
-fun SignInScreen(app: AppState) {
-    var useToken by remember { mutableStateOf(false) }
-    Box(Modifier.fillMaxSize().background(Ink.background)) {
-        AsyncImage(
-            model = F1TvApi.picture(app.featuredWeekend()?.image, 1920, 1080),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 0.7f },
-        )
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.3f to Color.Transparent, 0.85f to Ink.background)))
-        Column(
-            Modifier.align(Alignment.BottomStart).navigationBarsPadding().padding(SidePadding).widthIn(max = 480.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text("ALGS View", style = Type.largeTitle)
-            Text("Every feed of every session, arranged the way you want. Sign in with your F1 TV account.", style = Type.subhead)
-            Spacer(Modifier.height(8.dp))
-            PrimaryButton("Sign in", modifier = Modifier.fillMaxWidth(), enabled = !app.busy, onClick = app::startLogin)
-            if (useToken) {
-                OutlinedTextField(
-                    value = app.pastedToken,
-                    onValueChange = { app.pastedToken = it },
-                    placeholder = { Text("Subscription token", style = Type.body.copy(color = Ink.tertiary)) },
-                    singleLine = true,
-                    textStyle = Type.body,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Ink.secondary,
-                        unfocusedBorderColor = Ink.surfaceHigh,
-                        cursorColor = Ink.primary,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                SecondaryButton("Use token", Modifier.fillMaxWidth(), onClick = app::usePastedToken)
-            } else {
-                Text(
-                    "Use a token instead",
-                    style = Type.subhead,
-                    modifier = Modifier.pressable { useToken = true }.padding(vertical = 8.dp),
-                )
-            }
-            app.message?.let { Text(it, style = Type.footnote.copy(color = Ink.live)) }
-        }
-    }
-}
-
+/** Live now, Continue watching, and recent broadcasts on the main channel. */
 @Composable
 fun HomeScreen(app: AppState) {
-    val now = System.currentTimeMillis()
-    val latest = app.latestWeekend(now)
-    val latestContent = latest?.let { app.weekendContent[it.meetingKey] }
-    val upcoming = app.weekends.filter { it.startMs > now }
-    val picks = app.suggestions(now).ifEmpty {
-        listOfNotNull(app.featuredWeekend(now)?.let { Pick("${roundLabel(it)} · ${dates(it)}", weekend = it) })
-    }
-    val count = picks.size
-    // Endless both ways: the pager starts among many copies of the picks.
-    val pager = key(count) { rememberPagerState(initialPage = if (count > 1) count * 500 else 0) { if (count > 1) count * 1000 else count } }
-    val dragged by pager.interactionSource.collectIsDraggedAsState()
-    // Turns on its own, and waits a full turn again after you swipe.
-    LaunchedEffect(pager, pager.settledPage, dragged) {
-        if (count < 2 || dragged) return@LaunchedEffect
-        delay(CAROUSEL_MS)
-        pager.animateScrollToPage(pager.currentPage + 1, animationSpec = tween(Motion.SCREEN_MS * 2, easing = EaseOut))
-    }
-    // Every slide's artwork loads ahead, so turning never waits on it.
-    val context = LocalContext.current
-    LaunchedEffect(picks) {
-        picks.forEach { pick ->
-            F1TvApi.picture(pickImage(pick), 1920, 1080)?.let { context.imageLoader.enqueue(ImageRequest.Builder(context).data(it).build()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            app.pollStreams()
+            delay(30_000)
         }
     }
-
-    ArtPage(
-        image = null,
-        artKey = null,
-        title = "ALGS View",
-        listState = app.homeList,
-        trailing = { backdrop ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                GlyphButton(Icons.Rounded.CalendarMonth, "Calendar and past seasons", backdrop = backdrop) { app.open(Screen.Calendar) }
-                GlyphButton(Icons.Rounded.Settings, "Settings", backdrop = backdrop) { app.open(Screen.Settings) }
-            }
-        },
-        backdrop = { CarouselArt(picks, pager) },
-        heroBox = {
-            if (count > 0) {
-                HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
-                    Box(Modifier.fillMaxSize()) {
-                        Column(
-                            Modifier
-                                .align(Alignment.BottomStart)
-                                .padding(start = SidePadding, end = SidePadding, top = 8.dp, bottom = if (count > 1) 30.dp else 8.dp)
-                                .widthIn(max = 560.dp)
-                        ) { PickHero(app, picks[page.mod(count)]) }
-                    }
-                }
-                if (count > 1) PageDots(count, pager, Modifier.align(Alignment.BottomStart).padding(start = SidePadding, bottom = 8.dp))
-            }
-        },
-    ) {
-        app.homeError?.let { error ->
-            item {
-                Column(Modifier.padding(SidePadding)) {
-                    Text(error, style = Type.subhead)
-                    Spacer(Modifier.height(12.dp))
-                    SecondaryButton("Try again", onClick = app::loadHome)
-                }
-            }
-        }
-
-        item { Spacer(Modifier.height(20.dp)) }
-
-        // The carousel leads with what's live; a row only when there's more than one.
-        if (app.liveNow.size > 1) {
-            item {
-                Shelf(app, "Live now", app.liveNow.toList()) { item, width ->
-                    ArtCard(item.image, item.title, item.subtitle, width, live = true) {
-                        app.openPicker(item.contentId, listOfNotNull(item.subtitle, item.title).joinToString(" · "), item.image)
-                    }
-                }
-                Spacer(Modifier.height(28.dp))
-            }
-        }
-
-        if (latest != null && latestContent != null && latestContent.schedule.isNotEmpty()) {
-            // The weekend's schedule under the carousel, as on F1 TV's home page, until the weekend ends.
-            if (!latestContent.scheduleOver(now)) item {
-                WeekendSchedule(app, latest, latestContent.schedule, latestContent.sessions, latest.name, action = "Weekend" to { app.open(Screen.Weekend(latest)) })
-                Spacer(Modifier.height(28.dp))
-            }
-        } else if (latest != null && latestContent != null && latestContent.sessions.isNotEmpty()) {
-            item {
-                Shelf(app, latest.name, latestContent.sessions.reversed()) { item, width ->
-                    ArtCard(item.image, item.title, sessionLine(item), width, live = item.live, upcoming = item.upcoming) {
-                        app.openPicker(item.contentId, "${latest.name} · ${item.title}", item.image)
-                    }
-                }
-                Spacer(Modifier.height(28.dp))
-            }
-        }
-
-        // F1 TV's own rows, each video once. The weekend's rows come first (its shows, press
-        // conferences, F1 Academy), then F1 TV's catch-all row for the weekend.
-        val f1Rows = app.homePage?.rows.orEmpty()
-        // Once the schedule is gone, its sessions may show in these rows again.
-        val shown = latestContent?.takeUnless { it.schedule.isNotEmpty() && it.scheduleOver(now) }?.sessions.orEmpty().map { it.contentId }.toMutableSet()
-        fun unique(row: CatalogRow) = row.items.filter { it.pageId != null || shown.add(it.contentId) }
-        val weekendRows = f1Rows.filter { r ->
-            r.tag == CatalogRow.WEEKEND || (r.tag != CatalogRow.ARCHIVE && !r.posters && r.items.any { it.meeting.isNotEmpty() && it.meeting == latest?.name })
-        }.sortedBy { it.tag == CatalogRow.WEEKEND }
-        weekendRows.forEach { row ->
-            val items = unique(row)
-            val title = if (row.tag == CatalogRow.WEEKEND) "More from the weekend" else rowTitle(row.title)
-            item { VideoShelf(app, title, items) }
-        }
-
-        app.recents.toList().takeIf { it.isNotEmpty() && app.tiles.isEmpty() }?.let { recents ->
-            item {
-                Shelf(app, "Continue watching", recents) { it, width ->
-                    val left = (it.durationMs - it.positionMs).coerceAtLeast(0) / 1000
-                    val weekend = it.title.substringBefore(" · ")
-                    ArtCard(
-                        it.image,
-                        it.title.substringAfter(" · "),
-                        if (it.live) "$weekend · Live"
-                        else "$weekend · " + (if (left >= 3600) "${left / 3600}h ${left / 60 % 60}m left" else "${left / 60}m left"),
-                        width,
-                        live = it.live,
-                        progress = if (it.live || it.durationMs <= 0) null else it.positionMs.toFloat() / it.durationMs,
-                        onClick = { app.resumeWatching(it) },
-                    )
-                }
-                Spacer(Modifier.height(28.dp))
-            }
-        }
-
-        item {
-            Shelf(app, "${app.season} season", app.pastWeekends(now)) { w, width ->
-                val key = "card-${w.meetingKey}"
-                ArtCard(w.image, w.name, "${roundLabel(w)} · ${w.place}", width, artKey = key) {
-                    app.open(Screen.Weekend(w, key))
-                }
-            }
-            Spacer(Modifier.height(28.dp))
-        }
-
-        item {
-            Shelf(app, "Coming up", upcoming) { w, width ->
-                val key = "card-${w.meetingKey}"
-                ArtCard(w.image, w.name, dates(w), width, dimmed = true, artKey = key) {
-                    app.open(Screen.Weekend(w, key))
-                }
-            }
-            Spacer(Modifier.height(28.dp))
-        }
-
-        f1Rows.firstOrNull { it.tag == CatalogRow.ARCHIVE }?.let { row ->
-            val items = unique(row)
-            item { VideoShelf(app, "Popular races from the archive", items, action = "View all" to { app.open(Screen.Archive) }) }
-        }
-
-        item {
-            SeasonsShelf(app)
-            Spacer(Modifier.height(28.dp))
-        }
-
-        (f1Rows.filter { it.posters } + f1Rows.filter { !it.posters && it.tag != CatalogRow.ARCHIVE && it !in weekendRows }).forEach { row ->
-            val items = unique(row)
-            item { VideoShelf(app, rowTitle(row.title), items, posters = row.posters) }
-        }
+    val list = rememberLazyListState()
+    val density = LocalDensity.current
+    val scrolled by remember {
+        derivedStateOf { if (list.firstVisibleItemIndex > 0) Float.MAX_VALUE else list.firstVisibleItemScrollOffset.toFloat() }
     }
-}
-
-private const val CAROUSEL_MS = 7_000L
-
-/** F1 TV's row names in the app's sentence case, where they're the usual ones. */
-private fun rowTitle(label: String) = when (label) {
-    "Shows & Analysis" -> "Shows and analysis"
-    "Press Conferences" -> "Press conferences"
-    "Live & Replays" -> "Live and replays"
-    "From The Archive" -> "From the archive"
-    else -> label
-}
-
-private fun pickImage(pick: Pick) = pick.item?.image ?: pick.resume?.image ?: pick.weekend?.image
-
-/** A row of F1 TV videos (or, as [posters], its shows and documentaries), and the space after it. */
-@Composable
-private fun VideoShelf(app: AppState, title: String, items: List<CatalogItem>, key: String = title, posters: Boolean = false, action: Pair<String, () -> Unit>? = null) {
-    if (items.isEmpty()) return
-    Shelf(app, title, items, key = key, posters = posters, action = action) { item, width ->
-        if (posters) PosterCard(item, width) { app.watch(item) }
-        else ArtCard(item.image, item.title, sessionLine(item), width, live = item.live, upcoming = item.upcoming) { app.watch(item) }
-    }
-    Spacer(Modifier.height(28.dp))
-}
-
-/** A show's or documentary's portrait artwork, which carries its own title. */
-@Composable
-private fun PosterCard(item: CatalogItem, width: Dp, onClick: () -> Unit) {
-    Box(
-        Modifier
-            .width(width)
-            .aspectRatio(2f / 3f)
-            .pressable(onClick = onClick)
-            .clip(CardShape)
-            .background(Ink.surface)
-    ) {
-        AsyncImage(
-            model = F1TvApi.picture(item.image, 400, 600),
-            contentDescription = item.title,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
-        )
-    }
-}
-
-/** Every season as a row of years; each opens the calendar on that season. */
-@Composable
-private fun SeasonsShelf(app: AppState) {
-    Column {
-        Text("Every season", style = Type.title2, modifier = Modifier.padding(horizontal = SidePadding))
-        Text(
-            "Full races back to ${app.archiveSeasons.last()}",
-            style = Type.subhead,
-            modifier = Modifier.padding(start = SidePadding, end = SidePadding, top = 2.dp, bottom = 4.dp),
-        )
-        LazyRow(
-            state = app.rowState("seasons"),
-            contentPadding = PaddingValues(horizontal = SidePadding),
-            horizontalArrangement = Arrangement.spacedBy(22.dp),
+    val span = with(density) { 50.dp.toPx() }
+    Box(Modifier.fillMaxSize().background(Ink.background)) {
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            state = list,
+            contentPadding = PaddingValues(bottom = 40.dp),
+            verticalArrangement = Arrangement.spacedBy(28.dp),
         ) {
-            items(app.archiveSeasons) { year ->
-                Text(
-                    "$year",
-                    style = Type.title1,
-                    modifier = Modifier
-                        .pressable {
-                            app.chooseCalendarSeason(year)
-                            app.open(Screen.Calendar)
-                        }
-                        .padding(vertical = 8.dp),
-                )
-            }
-        }
-    }
-}
-
-/**
- * The carousel's artwork. It slides with the pager underneath the hero text, page for page, while
- * staying put as the page scrolls up over it like every other page's artwork.
- */
-@Composable
-private fun CarouselArt(picks: List<Pick>, pager: PagerState) {
-    if (picks.isEmpty()) return
-    val context = LocalContext.current
-    val base by remember(pager) { derivedStateOf { floor(pager.currentPage + pager.currentPageOffsetFraction).toInt() } }
-    Box(Modifier.fillMaxSize().clipToBounds()) {
-        for (page in base..base + 1) {
-            key(page) {
-                val image = pickImage(picks[page.mod(picks.size)])
-                AsyncImage(
-                    model = remember(image) {
-                        ImageRequest.Builder(context)
-                            .data(F1TvApi.picture(image, 1920, 1080))
-                            .placeholderMemoryCacheKey(F1TvApi.picture(image, 640, 360))
-                            .crossfade(Motion.FADE_MS)
-                            .build()
-                    },
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer { translationX = (page - pager.currentPage - pager.currentPageOffsetFraction) * size.width },
-                )
-            }
-        }
-    }
-}
-
-/** One slide's words and buttons: why it's here, what it is, and how to watch it. */
-@Composable
-private fun PickHero(app: AppState, pick: Pick) {
-    val item = pick.item
-    val resume = pick.resume
-    val weekend = pick.weekend
-    if (item?.live == true) LiveMark(Modifier.padding(bottom = 6.dp))
-    else Text(pick.reason, style = Type.footnote.copy(color = Ink.primary.copy(alpha = 0.8f)))
-    val title = when {
-        item != null -> item.title
-        resume != null -> resume.title.substringBefore(" · ")
-        else -> weekend?.name.orEmpty()
-    }
-    val line = when {
-        item != null -> listOfNotNull(
-            item.meeting.takeIf { it.isNotEmpty() && !title.contains(it.substringBefore(" Grand Prix")) },
-            item.subtitle.takeIf { it != "Live" },
-            duration(item.durationSec),
-        ).joinToString(" · ")
-        resume != null -> {
-            val left = (resume.durationMs - resume.positionMs).coerceAtLeast(0) / 1000
-            listOfNotNull(
-                resume.title.substringAfter(" · ", "").ifEmpty { null },
-                if (left >= 3600) "${left / 3600}h ${left / 60 % 60}m left" else "${left / 60}m left",
-            ).joinToString(" · ")
-        }
-        else -> weekend?.place.orEmpty()
-    }
-    Text(title, style = Type.largeTitle, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
-    if (line.isNotEmpty()) Text(line, style = Type.subhead, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    Spacer(Modifier.height(16.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        when {
-            resume != null -> PrimaryButton("Resume", Icons.Rounded.PlayArrow) { app.resumeWatching(resume) }
-            item != null -> {
-                PrimaryButton(if (item.live) "Watch live" else "Play", Icons.Rounded.PlayArrow) { app.watch(item) }
-                app.weekendOf(item)?.let { w -> SecondaryButton("Weekend") { app.open(Screen.Weekend(w)) } }
-            }
-            weekend != null -> {
-                val ahead = weekend.startMs > System.currentTimeMillis() || app.nextSession(weekend) != null
-                PrimaryButton(if (weekend.startMs > System.currentTimeMillis()) "Schedule" else "Sessions") {
-                    app.open(Screen.Weekend(weekend))
-                }
-                // Sessions still to come: a way to be reminded of them.
-                if (ahead) SecondaryButton(if (app.remindersOn) "Reminders on" else "Notify me") { app.openReminders() }
-            }
-        }
-    }
-}
-
-/** Which slide is showing: small dots, the current one white. */
-@Composable
-private fun PageDots(count: Int, pager: PagerState, modifier: Modifier) {
-    Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        repeat(count) { i ->
-            val on = pager.currentPage.mod(count) == i
-            Box(Modifier.size(6.dp).clip(CircleShape).background(if (on) Ink.primary else Ink.tertiary))
-        }
-    }
-}
-
-@Composable
-fun WeekendScreen(app: AppState, weekend: WeekendInfo, artKey: String?) {
-    val content = app.weekendContent[weekend.meetingKey]
-    ArtPage(
-        image = weekend.image,
-        artKey = artKey,
-        title = weekend.name,
-        listState = rememberLazyListState(),
-        leading = { backdrop -> GlyphButton(Icons.Rounded.ArrowBackIosNew, "Back", backdrop = backdrop) { app.back() } },
-        hero = {
-            Text("${roundLabel(weekend)} · ${dates(weekend)}", style = Type.footnote.copy(color = Ink.primary.copy(alpha = 0.8f)))
-            Text(weekend.name, style = Type.largeTitle, modifier = Modifier.padding(top = 2.dp))
-            Text(weekend.place, style = Type.subhead)
-        },
-    ) {
-        item { Spacer(Modifier.height(20.dp)) }
-        item {
-            AnimatedVisibility(content == null, enter = fadeIn(tween(Motion.FADE_MS)), exit = fadeOut(tween(Motion.FADE_MS))) {
-                Text("Loading sessions…", style = Type.subhead, modifier = Modifier.padding(horizontal = SidePadding))
-            }
-        }
-        if (content != null) {
-            if (content.sessions.isEmpty() && content.videos.isEmpty()) {
-                item {
-                    Text(
-                        "Sessions show up here once they start.",
-                        style = Type.subhead,
-                        modifier = Modifier.padding(horizontal = SidePadding),
-                    )
+            item {
+                Column(Modifier.padding(horizontal = SidePadding)) {
+                    Spacer(Modifier.statusBarsPadding().height(60.dp))
+                    Text("ALGS View", style = Type.largeTitle)
+                    PrimaryButton("Pick feeds", modifier = Modifier.padding(top = 16.dp), onClick = app::openPicker)
+                    app.homeError?.let { Text(it, style = Type.footnote, modifier = Modifier.padding(top = 12.dp)) }
                 }
             }
-            if (content.schedule.isNotEmpty()) {
-                // F1 TV's own layout: the schedule by day, then its rows in its order
-                // (live and replays, press conferences, past races here).
-                item {
-                    WeekendSchedule(app, weekend, content.schedule, content.sessions, "Schedule")
-                    Spacer(Modifier.height(28.dp))
+            item {
+                val live = app.liveOthers.filter { it.login == Teams.BROADCAST } + app.liveTeams + app.liveOthers.filter { it.login != Teams.BROADCAST }
+                if (live.isEmpty()) {
+                    Text("Nothing from the ALGS is live right now.", style = Type.subhead, modifier = Modifier.padding(horizontal = SidePadding))
                 }
-                content.rows.forEach { row ->
-                    item { VideoShelf(app, rowTitle(row.title), row.items, key = "w${weekend.meetingKey}-${row.title}") }
-                }
-            } else {
-                val sessionsShelf: @Composable () -> Unit = {
-                    Shelf(app, "Sessions", content.sessions) { item, width ->
-                        ArtCard(item.image, item.title, sessionLine(item), width, live = item.live, upcoming = item.upcoming) {
-                            app.openPicker(item.contentId, "${weekend.name} · ${item.title}", item.image)
-                        }
+                Shelf(app, "Live now", live) { stream, width ->
+                    val channel = app.channelOf(stream)
+                    ArtCard(stream.image, channel.title, if (stream.login == Teams.BROADCAST) stream.title else Teams.channelLabel(stream.login), width, live = true) {
+                        app.watch(channel)
                     }
                 }
-                val videosShelf: @Composable () -> Unit = {
-                    Shelf(app, "Highlights and shows", content.videos) { item, width ->
-                        ArtCard(item.image, item.title, sessionLine(item), width, live = item.live, upcoming = item.upcoming) {
-                            app.openPicker(item.contentId, item.title, item.image)
-                        }
+            }
+            item {
+                Shelf(app, "Continue watching", app.recents.toList()) { saved, width ->
+                    ArtCard(saved.image, saved.title, null, width) { app.resumeWatching(saved) }
+                }
+            }
+            item {
+                Shelf(app, "Recent broadcasts", app.vods.toList()) { vod, width ->
+                    ArtCard(vod.image, vod.title, duration(vod.seconds), width) {
+                        app.watch(Channel(vod.title, vodId = vod.id, image = vod.image))
                     }
                 }
-                // Before the first session can be watched, the warm-up show and press conferences
-                // are all there is to play, so they lead, as F1 TV's "Live & Replays" row does.
-                val videosFirst = content.sessions.all { it.upcoming } && content.videos.any { !it.upcoming }
-                item {
-                    if (videosFirst) videosShelf() else sessionsShelf()
-                    Spacer(Modifier.height(28.dp))
-                }
-                item { if (videosFirst) sessionsShelf() else videosShelf() }
             }
         }
-    }
-}
-
-/** A show's or documentary's page: its episodes, a row per season. */
-@Composable
-fun CollectionScreen(app: AppState, pageId: Int, title: String) {
-    val page = app.collections[pageId]
-    ArtPage(
-        image = page?.image,
-        artKey = null,
-        title = title,
-        listState = rememberLazyListState(),
-        leading = { backdrop -> GlyphButton(Icons.Rounded.ArrowBackIosNew, "Back", backdrop = backdrop) { app.back() } },
-        hero = {
-            Text(page?.title?.ifBlank { null } ?: title, style = Type.largeTitle)
-            page?.description?.takeIf { it.isNotBlank() }?.let {
-                Text(it, style = Type.subhead, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
-            }
-        },
-    ) {
-        item { Spacer(Modifier.height(20.dp)) }
-        if (page == null) item { Text("Loading…", style = Type.subhead, modifier = Modifier.padding(horizontal = SidePadding)) }
-        page?.rows?.forEach { row -> item { VideoShelf(app, row.title, row.items, key = "c$pageId-${row.title}") } }
-    }
-}
-
-/** The races F1 TV viewers watch most, a row per season, and the way to every season. */
-@Composable
-fun ArchiveScreen(app: AppState) {
-    val races = app.archive
-    ArtPage(
-        image = races?.firstOrNull()?.image,
-        artKey = null,
-        title = "From the archive",
-        listState = rememberLazyListState(),
-        leading = { backdrop -> GlyphButton(Icons.Rounded.ArrowBackIosNew, "Back", backdrop = backdrop) { app.back() } },
-        hero = {
-            Text("From the archive", style = Type.largeTitle)
-            Text("The races F1 TV viewers watch most. Every season since ${app.archiveSeasons.last()} is in the calendar.", style = Type.subhead)
-            Spacer(Modifier.height(16.dp))
-            SecondaryButton("Every season") { app.open(Screen.Calendar) }
-        },
-    ) {
-        item { Spacer(Modifier.height(20.dp)) }
-        if (races == null) item { Text("Loading…", style = Type.subhead, modifier = Modifier.padding(horizontal = SidePadding)) }
-        races.orEmpty().groupBy { it.year }.toSortedMap(compareByDescending { it }).forEach { (year, list) ->
-            item { VideoShelf(app, if (year > 0) "$year" else "More races", list, key = "archive-$year") }
-        }
+        TopBar(
+            title = "ALGS View",
+            fill = { (scrolled / span).coerceIn(0f, 1f) },
+            titleIn = { ((scrolled - span * 0.6f) / (span * 0.4f)).coerceIn(0f, 1f) },
+            trailing = { backdrop -> GlyphButton(Icons.Rounded.Settings, "Settings", backdrop = backdrop) { app.open(Screen.Settings) } },
+        )
     }
 }
