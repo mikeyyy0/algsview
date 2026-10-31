@@ -79,6 +79,9 @@ fun FeedPickerSheet(app: AppState, picker: FeedPicker) {
                 Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)
             ) {
                 Text("Add feeds", style = Type.title2)
+                app.standings?.takeIf { it.live }?.let { set ->
+                    Text(listOfNotNull(set.name, set.match).joinToString(" · "), style = Type.subhead, modifier = Modifier.padding(top = 2.dp))
+                }
                 Text(
                     picker.note ?: if (app.tiles.isEmpty()) "Pick up to 4. You can switch any of them while watching."
                     else "Feeds on screen are already picked. Unpick one to make room for another.",
@@ -182,9 +185,18 @@ private fun PickRow(app: AppState, picker: FeedPicker, channel: Channel, detail:
         Modifier.fillMaxWidth().pressable(scaleTo = 0.99f) { app.togglePick(channel) }.padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        channel.login?.let { app.channelTeams[it]?.logo }?.let { logo ->
+            coil.compose.AsyncImage(model = logo, contentDescription = null, modifier = Modifier.size(24.dp))
+            Spacer(Modifier.size(10.dp))
+        }
         Column(Modifier.weight(1f)) {
             Text(channel.title, style = Type.body.copy(color = if (dropping) Ink.secondary else Ink.primary), maxLines = 1)
             detail?.let { Text(it, style = Type.footnote, maxLines = 1) }
+        }
+        // Points beside the team, from the set on now.
+        val team = channel.login?.let { app.channelTeams[it] }
+        team?.let { t -> app.standings?.teams?.firstOrNull { it.name == t.name } }?.let {
+            Text("#${it.position} · ${it.points} pts", style = Type.footnote, modifier = Modifier.padding(end = 12.dp))
         }
         when {
             playing && !dropping -> Text("On", style = Type.footnote.copy(color = Ink.primary))
@@ -285,7 +297,7 @@ fun SettingsScreen(app: AppState) {
             }
         }
         item {
-            Group("Scores", footer = "The Scores button finds the current event from the broadcast's title. A link here replaces that; leave it empty to go back.") {
+            Group("Scores", footer = "The Scores button shows the current set's standings from the ALGS itself. This link is only for Open on Battlefy, which otherwise finds the event by itself.") {
                 SettingField("Battlefy link (optional)", s.battlefyUrl, "Found automatically", s::updateBattlefyUrl)
             }
         }

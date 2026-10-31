@@ -97,7 +97,9 @@ class TwitchApi {
             JSONObject().put("operationName", "PlaybackAccessToken").put("query", TOKEN_QUERY).put(
                 "variables",
                 JSONObject().put("isLive", !isVod).put("login", login).put("isVod", isVod)
-                    .put("vodID", channel.vodId.orEmpty()).put("playerType", "site"),
+                    // Measured Oct 31, 2026: of 15 player types tried, only "embed" starts a live
+                    // stream with no preroll, at full quality. Mid-stream ads are still filtered.
+                    .put("vodID", channel.vodId.orEmpty()).put("playerType", if (isVod) "site" else "embed"),
             )
         )
         val token = data.optJSONObject(if (isVod) "videoPlaybackAccessToken" else "streamPlaybackAccessToken")

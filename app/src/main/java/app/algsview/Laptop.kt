@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -19,17 +21,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 
 /**
  * The half of the screen below the hinge in laptop mode: the feeds to choose from, with Scores, on
- * the left. The map on the right is its own window.
+ * the left. On the right, the map in its own window if one is set, else the standings.
  */
 @Composable
 fun LaptopPanel(app: AppState, modifier: Modifier) {
-    val activity = LocalContext.current as android.app.Activity
     Row(modifier.background(Ink.background)) {
         Column(Modifier.weight(AppState.LAPTOP_LIST_SHARE).fillMaxHeight().padding(start = 20.dp, top = 12.dp)) {
             app.tiles.forEach { tile ->
@@ -49,10 +49,16 @@ fun LaptopPanel(app: AppState, modifier: Modifier) {
             Text(
                 "Scores",
                 style = Type.headline,
-                modifier = Modifier.pressable { app.openScores(activity) }.padding(vertical = 14.dp),
+                modifier = Modifier.pressable { app.scoresOpen = true }.padding(vertical = 14.dp),
             )
         }
-        Spacer(Modifier.weight(1f - AppState.LAPTOP_LIST_SHARE))
+        // The map's window lies over this side when there is one; otherwise the standings fill it.
+        Box(Modifier.weight(1f - AppState.LAPTOP_LIST_SHARE).fillMaxHeight()) {
+            if (app.currentMap == null) {
+                RefreshStandings(app)
+                Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp)) { StandingsTable(app) }
+            }
+        }
     }
 }
 

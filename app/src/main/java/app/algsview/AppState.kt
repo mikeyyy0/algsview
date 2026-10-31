@@ -206,6 +206,7 @@ class AppState(
     private val openImagePicker: () -> Unit,
 ) {
     private val twitch = TwitchApi()
+    private val algs = AlgsApi()
     private val prefs = context.getSharedPreferences("algsview", Context.MODE_PRIVATE)
 
     // Video budget: only feeds you can see decode video, each at its tile's size, less as the phone heats up.
@@ -352,10 +353,30 @@ class AppState(
         get() = streams.values.filter { it.live && !Teams.isTeamChannel(it.login, settings.teamPrefix) }
             .sortedBy { Teams.BROADCASTS.indexOf(it.login).let { i -> if (i < 0) Teams.BROADCASTS.size else i } }
 
-    fun channelOf(stream: StreamInfo) = Channel(Teams.label(stream, settings.teamPrefix), login = stream.login, image = stream.image)
+    fun channelOf(stream: StreamInfo) = Channel(labelOf(stream), login = stream.login, image = stream.image)
+
+    /** Who's on each channel in the set on now, from the ALGS itself. */
+    val channelTeams = mutableStateMapOf<String, ChannelTeam>()
+    /** The current set's standings, once fetched. */
+    var standings by mutableStateOf<Standings?>(null)
+        private set
+    /** Why the standings are missing or may be old. */
+    var standingsError by mutableStateOf<String?>(null)
+        private set
+    var scoresOpen by mutableStateOf(false)
+
+    suspend fun loadStandings() {
+        runCatching { algs.standings() }
+            .onSuccess { standings = it; standingsError = null }
+            .onFailure { standingsError = "Couldn't update the standings: ${it.message}" }
+    }
+
+    /** The official team name where the ALGS lists one, else what the stream title says. */
+    private fun labelOf(stream: StreamInfo) = channelTeams[stream.login]?.name ?: Teams.label(stream, settings.teamPrefix)
 
     /** Asks about every channel in one request; called every 30 s while the app is on screen. */
     suspend fun pollStreams() {
+        runCatching { algs.channels() }.onSuccess { channelTeams.clear(); channelTeams.putAll(it) }
         val extra = tiles.mapNotNull { it.channel.login }
         val logins = (Teams.logins(settings.teamPrefix, settings.teamCount) + extra).distinct()
         val found = runCatching { twitch.streams(logins) }
@@ -368,7 +389,7 @@ class AppState(
         tiles.forEach { tile ->
             val login = tile.channel.login
             val stream = login?.let { streams[it] } ?: return@forEach
-            val label = Teams.label(stream, settings.teamPrefix)
+            val label = labelOf(stream)
             if (tile.channel.follow == null && tile.channel.title != label) tile.channel = tile.channel.copy(title = label)
         }
     }
@@ -1349,6 +1370,7 @@ class AppState(
         helpAnchors.clear()
         layoutSheetOpen = false
         mapSheetOpen = false
+        scoresOpen = false
         arranging = false
         mutedAll = false
         playing = true

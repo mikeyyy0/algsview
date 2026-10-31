@@ -4,7 +4,7 @@ Watch Apex Legends Global Series LAN events on a foldable Android phone: up to f
 at once, freely arranged, with the team you care about followed from channel to channel.
 
 **Unofficial.** Not made or endorsed by EA, Respawn, the ALGS or Twitch. No game art ships with the
-app. It uses Twitch's private web API, which can change or break at any time.
+app. It uses Twitch's private web API and the undocumented API behind algs.ea.com, either of which can change or break at any time.
 
 ## What it does
 
@@ -16,7 +16,7 @@ app. It uses Twitch's private web API, which can change or break at any time.
 - Ad breaks hold the last frame, the way Streamlink's `--twitch-disable-ads` does. Ads are not
   fetched or played, and subscriber status is not spoofed.
 - Your own map screenshots as an overlay, with coloured pins. Apex has no public live position data.
-- Scores: the current event on Battlefy in a sheet beside the feeds.
+- Scores: the current set's standings, live, from the API behind algs.ea.com, over the feeds.
 - Cover-screen and laptop (half-folded) modes, pop-out, Continue watching with your layout.
 
 No sign-in, no analytics. Crash reports are opt-in: you read and submit them yourself.

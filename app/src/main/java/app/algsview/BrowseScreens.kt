@@ -346,7 +346,10 @@ fun HomeScreen(app: AppState) {
                 Column(Modifier.padding(horizontal = SidePadding)) {
                     Spacer(Modifier.statusBarsPadding().height(60.dp))
                     Text("ALGS View", style = Type.largeTitle)
-                    PrimaryButton("Pick feeds", modifier = Modifier.padding(top = 16.dp), onClick = app::openPicker)
+                    Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        PrimaryButton("Pick feeds", onClick = app::openPicker)
+                        SecondaryButton("Scores") { app.scoresOpen = true }
+                    }
                     app.homeError?.let { Text(it, style = Type.footnote, modifier = Modifier.padding(top = 12.dp)) }
                 }
             }
@@ -382,4 +385,5 @@ fun HomeScreen(app: AppState) {
             trailing = { backdrop -> GlyphButton(Icons.Rounded.Settings, "Settings", backdrop = backdrop) { app.open(Screen.Settings) } },
         )
     }
+    if (app.scoresOpen) StandingsSheet(app)
 }

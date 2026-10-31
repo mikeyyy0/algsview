@@ -47,7 +47,7 @@ private val BAR_HELP = listOf(
     "add" to ("Add" to "more feeds, up to 4"),
     "layout" to ("Layout" to "presets, save your own"),
     "map" to ("Map" to "your screenshot, with pins"),
-    "scores" to ("Scores" to "this event on Battlefy, beside the feeds"),
+    "scores" to ("Scores" to "the current set's standings"),
 )
 
 /**

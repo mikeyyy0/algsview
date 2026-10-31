@@ -327,6 +327,7 @@ fun ViewerScreen(app: AppState) {
     app.tileMenu?.let { TileMenuSheet(app, it) }
     if (app.layoutSheetOpen) LayoutSheet(app)
     if (app.mapSheetOpen) MapSheet(app)
+    if (app.scoresOpen) StandingsSheet(app)
     LaptopPrompt(app)
 }
 
@@ -381,9 +382,8 @@ private fun TopChrome(app: AppState, cutout: Clearance) {
         Glyph(if (app.arranging) Icons.Rounded.LockOpen else Icons.Rounded.Lock, if (app.arranging) "Lock layout" else "Unlock to move and resize", modifier = Modifier.helpAnchor(app, "lock"), onClick = app::toggleArranging)
         Glyph(Icons.Rounded.Add, "Add a feed", modifier = Modifier.helpAnchor(app, "add")) { app.openPicker() }
         Glyph(Icons.Rounded.GridView, "Layout: ${app.layoutMode.label}", modifier = Modifier.helpAnchor(app, "layout")) { app.layoutSheetOpen = true; app.showChrome() }
-        val activity = LocalContext.current as Activity
         Glyph(Icons.Rounded.Map, "Map", modifier = Modifier.helpAnchor(app, "map")) { app.mapSheetOpen = true; app.showChrome() }
-        Glyph(Icons.Rounded.Leaderboard, "Scores", modifier = Modifier.helpAnchor(app, "scores")) { app.openScores(activity) }
+        Glyph(Icons.Rounded.Leaderboard, "Scores", modifier = Modifier.helpAnchor(app, "scores")) { app.scoresOpen = true; app.showChrome() }
         Glyph(Icons.Rounded.HelpOutline, "What everything does", 22, onClick = app::showHelp)
     }
 }

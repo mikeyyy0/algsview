@@ -173,6 +173,7 @@ private fun Root(app: AppState) {
     BackHandler {
         when {
             app.tileMenu != null -> app.closeTileMenu()
+            app.scoresOpen -> app.scoresOpen = false
             app.mapSheetOpen -> app.mapSheetOpen = false
             watching && app.picker == null -> app.stopAll()
             !app.back() -> Unit
