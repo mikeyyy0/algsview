@@ -144,13 +144,13 @@ private val TERM_WIDTH = 120.dp
 private fun Legend(compact: Boolean, swapLine: Boolean) {
     Column {
         Group("Feeds")
-        Entry("Tap", "a feed: its audio comes on, and it gets the best quality")
+        Entry("Volume icon", "in a feed's corner: its audio comes on, and it gets the best quality")
         when {
             swapLine -> Entry("Double-tap", "a small feed: it swaps into the big spot")
             compact -> Entry("Double-tap", "a feed: it fills the screen; again to go back")
         }
         Entry("Hold", "a feed: switch it, follow its team, pin it")
-        Entry("Tap again", "the feed you hear: show or hide these controls")
+        Entry("Tap", "a feed: show or hide these controls")
         Group("Teams")
         Entry("Follow", "from + or a feed's menu: the feed moves when its team changes channel")
         Group("Map cam")

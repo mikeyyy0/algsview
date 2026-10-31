@@ -1194,18 +1194,6 @@ class AppState(
     }
 
     /**
-     * A tap on a feed: the audio follows it. Tapping the feed already heard shows or hides the
-     * controls.
-     */
-    fun tapFeed(tile: Tile) {
-        if (tile.channel.isMapCam || (tile.audible && !mutedAll)) toggleChrome()
-        else {
-            setAudio(tile, byUser = true)
-            message = "Listening to ${tile.channel.title}"
-        }
-    }
-
-    /**
      * On a narrow screen (the cover screen, where feeds stack), a double-tap fills the screen
      * with that feed and tucks the rest away (still playing); double-tap again to bring them
      * back. On the wide screen it swaps the feed into the big spot.

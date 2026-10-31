@@ -587,8 +587,8 @@ private fun clock(ms: Long): String {
 private val overlayShadow = androidx.compose.ui.graphics.Shadow(Color.Black, blurRadius = 6f)
 
 /**
- * A feed. Tap brings the audio here (or, if it's here, shows or hides the controls), double-tap
- * brings it into the big slot, long-press opens its menu. While
+ * A feed. Tap shows or hides the controls, the volume icon in its corner brings the audio here,
+ * double-tap brings it into the big slot, long-press opens its menu. While
  * arranging, one finger drags and two resize. With the controls up, the header shows the feed's
  * name (tap for its menu), a speaker that moves the audio here, and on the small feeds a close.
  */
@@ -643,7 +643,7 @@ private fun TileView(app: AppState, tile: Tile) {
                 .pointerInput(tile.id) {
                     detectTapGestures(
                         onPress = { app.raise(tile) },
-                        onTap = { app.tapFeed(tile) },
+                        onTap = { app.toggleChrome() },
                         onDoubleTap = { app.doubleTap(tile) },
                         onLongPress = { app.openTileMenu(tile); app.showChrome() },
                     )
@@ -793,18 +793,24 @@ private fun TileHeader(app: AppState, tile: Tile) {
                         if (tile.pinned) Icon(Icons.Rounded.PushPin, "Pinned", tint = Ink.primary, modifier = Modifier.padding(start = 4.dp).size(14.dp))
                     }
                 }
-                // With one feed there's no audio to move; Mute all is in the controls.
-                if (app.tiles.size > 1 && !tile.channel.isMapCam) {
-                    val hearing = tile.audible && !app.mutedAll
-                    Glyph(if (hearing) Icons.Rounded.VolumeUp else Icons.Rounded.VolumeOff, if (hearing) "Playing audio" else "Play audio from this feed", 20) {
-                        app.setAudio(tile, byUser = true)
-                        app.showChrome()
-                    }
-                }
-                // The small feeds close from here; the rest close up to fill the space.
+                // The small feeds close from here, beside the room kept for the volume icon.
                 if (app.tiles.size > 1 && !app.isMainTile(tile)) {
                     Glyph(Icons.Rounded.Close, "Close ${tile.channel.title}", 18) { app.remove(tile) }
                 }
+                if (app.tiles.size > 1 && !tile.channel.isMapCam) Spacer(Modifier.width(44.dp))
+            }
+        }
+        // Always there, controls up or not: the one way to move the audio. With one feed there's no
+        // audio to move (Mute all is in the controls), and the map cam has none.
+        if (app.tiles.size > 1 && !tile.channel.isMapCam) {
+            val hearing = tile.audible && !app.mutedAll
+            Glyph(
+                if (hearing) Icons.Rounded.VolumeUp else Icons.Rounded.VolumeOff,
+                if (hearing) "Playing audio" else "Play audio from this feed",
+                20,
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = 2.dp, end = 2.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.45f)),
+            ) {
+                app.setAudio(tile, byUser = true)
             }
         }
     }

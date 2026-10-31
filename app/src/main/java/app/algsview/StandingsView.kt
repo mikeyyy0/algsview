@@ -55,6 +55,8 @@ fun RefreshStandings(app: AppState) {
 @Composable
 fun StandingsSheet(app: AppState) {
     RefreshStandings(app)
+    // Read out here: inside the sheet's own window the context isn't the activity.
+    val activity = LocalContext.current as android.app.Activity
     ModalBottomSheet(
         onDismissRequest = { app.scoresOpen = false },
         sheetState = rememberModalBottomSheetState(),
@@ -63,7 +65,6 @@ fun StandingsSheet(app: AppState) {
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
     ) {
         KeepSystemBarsHidden(enabled = app.tiles.isNotEmpty() && !app.browsing)
-        val activity = LocalContext.current as android.app.Activity
         Column(Modifier.verticalScroll(rememberScrollState()).navigationBarsPadding().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
             StandingsTable(app)
             Text(
