@@ -509,15 +509,13 @@ private fun TileView(app: AppState, tile: Tile) {
             modifier = Modifier.fillMaxSize().graphicsLayer {
                 scaleX = tile.zoom
                 scaleY = tile.zoom
-                translationX = tile.zoomX
-                translationY = tile.zoomY
+                translationX = tile.zoomX * tile.w
+                translationY = tile.zoomY * tile.h
             },
         )
         if (app.inPip) return@Box
 
         val zoomable = app.canZoom(tile) && !app.arranging
-        // Moved out of the main spot, the whole picture comes back.
-        LaunchedEffect(zoomable) { if (!zoomable) tile.resetZoom() }
 
         Box(
             Modifier

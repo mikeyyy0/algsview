@@ -154,7 +154,7 @@ private fun Legend(compact: Boolean, swapLine: Boolean) {
         Group("Teams")
         Entry("Follow", "from + or a feed's menu: the feed moves when its team changes channel")
         Group("Map cam")
-        Entry("Pinch", "it in the main spot to zoom; double-tap for the whole picture")
+        Entry("Pinch", "it in the main spot to zoom; it stays zoomed when small. Double-tap in the main spot for the whole picture")
         Group("Map")
         Entry("Tap", "the map: drop a pin; tap a pin to remove it")
         Group("Leaving")

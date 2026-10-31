@@ -36,7 +36,10 @@ class Tile(val id: Int, channel: Channel, val feed: FeedPlayer, val accent: Int)
     var pinned by mutableStateOf(false)
     /** Showing, but its picture paused while the phone is too hot (sound and place kept). */
     var coolingOff by mutableStateOf(false)
-    /** Pinch zoom on the picture, for the map cam in the main spot: 1 is the whole picture. */
+    /**
+     * Pinch zoom on the picture, for the map cam: 1 is the whole picture. The offset is in fractions
+     * of the tile, so a zoomed map shows the same part of itself at any tile size.
+     */
     var zoom by mutableFloatStateOf(1f)
     var zoomX by mutableFloatStateOf(0f)
     var zoomY by mutableFloatStateOf(0f)
@@ -45,10 +48,9 @@ class Tile(val id: Int, channel: Channel, val feed: FeedPlayer, val accent: Int)
     fun zoomBy(factor: Float, centroid: androidx.compose.ui.geometry.Offset, pan: androidx.compose.ui.geometry.Offset) {
         val next = (zoom * factor).coerceIn(1f, MAX_ZOOM)
         val k = next / zoom
-        val limitX = w * (next - 1f) / 2f
-        val limitY = h * (next - 1f) / 2f
-        zoomX = (zoomX * k + centroid.x * (1f - k) + pan.x).coerceIn(-limitX, limitX)
-        zoomY = (zoomY * k + centroid.y * (1f - k) + pan.y).coerceIn(-limitY, limitY)
+        val limit = (next - 1f) / 2f
+        zoomX = (zoomX * k + (centroid.x * (1f - k) + pan.x) / w).coerceIn(-limit, limit)
+        zoomY = (zoomY * k + (centroid.y * (1f - k) + pan.y) / h).coerceIn(-limit, limit)
         zoom = next
     }
 
@@ -1148,7 +1150,7 @@ class AppState(
      */
     fun doubleTap(tile: Tile) {
         when {
-            tile.zoom > 1f -> tile.resetZoom()
+            tile.zoom > 1f && canZoom(tile) -> tile.resetZoom()
             laptopActive -> putOnTop(tile)
             focusTileId != null -> {
                 focusTileId = null
