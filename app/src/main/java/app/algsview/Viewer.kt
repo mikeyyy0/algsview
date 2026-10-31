@@ -384,6 +384,9 @@ private const val DRAWER_FALLBACK = 0.38f
 private const val DRAWER_MIN = 0.22f
 private const val DRAWER_SLIDE_MS = 340
 private val DRAWER_TAB_HEIGHT = 52.dp
+private val DRAWER_TAB_WIDTH = 140.dp
+private val DRAWER_HANDLE_HEIGHT = 24.dp
+private val DRAWER_HANDLE_WIDTH = 200.dp
 
 /**
  * The map cam: a tab at the bottom that slides a drawer up to just under the main feed, so the main
@@ -400,7 +403,6 @@ private fun MapDrawer(app: AppState, height: Float, modifier: Modifier) {
     val slid by animateFloatAsState(if (open) 1f else 0f, tween(DRAWER_SLIDE_MS, easing = EaseOut), label = "mapDrawer")
     // Shut, the tab sits clear of the playback controls while they're up.
     val rest by animateDpAsState(if (app.chromeVisible && !app.arranging && !open) 110.dp else 10.dp, tween(Motion.SCREEN_MS, easing = EaseOut), label = "mapTab")
-    LaunchedEffect(open, room) { if (open) app.mapDrawerTop = height - room }
     val zoom = app.mapCamZoom
     Box(modifier.fillMaxSize()) {
         Box(
@@ -429,26 +431,31 @@ private fun MapDrawer(app: AppState, height: Float, modifier: Modifier) {
             )
             BufferingRing(feed, Modifier.align(Alignment.Center))
         }
-        Row(
+        // A big tab while shut; open, a slim wide handle lying across the drawer's top edge, clear of the map.
+        val tabHeight = DRAWER_TAB_HEIGHT + (DRAWER_HANDLE_HEIGHT - DRAWER_TAB_HEIGHT) * slid
+        val tabWidth = DRAWER_TAB_WIDTH + (DRAWER_HANDLE_WIDTH - DRAWER_TAB_WIDTH) * slid
+        Box(
             Modifier
                 .align(Alignment.BottomCenter)
                 .offset {
                     // From its resting place up to the top edge of the open drawer.
                     val shut = rest.toPx()
-                    val raised = room - DRAWER_TAB_HEIGHT.toPx() - 6.dp.toPx()
+                    val raised = room - DRAWER_HANDLE_HEIGHT.toPx() / 2
                     IntOffset(0, -(shut + (raised - shut) * slid).roundToInt())
                 }
-                .height(DRAWER_TAB_HEIGHT)
+                .size(tabWidth, tabHeight)
                 .pressable(onClick = app::toggleMapDrawer)
-                .clip(RoundedCornerShape(26.dp))
-                .background(Color.Black.copy(alpha = 0.72f))
-                .padding(horizontal = 32.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .clip(RoundedCornerShape(tabHeight / 2))
+                .background(Color.Black.copy(alpha = 0.72f)),
+            contentAlignment = Alignment.Center,
         ) {
-            Text("Map", style = Type.headline.copy(color = Ink.primary))
+            Row(Modifier.graphicsLayer { alpha = (1f - slid * 2f).coerceIn(0f, 1f) }, verticalAlignment = Alignment.CenterVertically) {
+                Text("Map", style = Type.headline.copy(color = Ink.primary))
+                Icon(Icons.Rounded.KeyboardArrowUp, null, tint = Ink.primary, modifier = Modifier.padding(start = 6.dp).size(26.dp))
+            }
             Icon(
-                if (open) Icons.Rounded.KeyboardArrowDown else Icons.Rounded.KeyboardArrowUp, null,
-                tint = Ink.primary, modifier = Modifier.padding(start = 6.dp).size(26.dp),
+                Icons.Rounded.KeyboardArrowDown, "Close the map", tint = Ink.primary,
+                modifier = Modifier.size(22.dp).graphicsLayer { alpha = (slid * 2f - 1f).coerceIn(0f, 1f) },
             )
         }
     }

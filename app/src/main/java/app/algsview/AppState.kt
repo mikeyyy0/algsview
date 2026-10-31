@@ -296,7 +296,7 @@ class AppState(
                 inPip -> tile === shown
                 laptopActive -> tile.id == bigTileId || tiles.size == 1
                 focusTileId != null -> tile.id == focusTileId
-                else -> onCanvas(tile) && tile.y < mapDrawerTop && tiles.none { it !== tile && it.z > tile.z && covers(it, tile) }
+                else -> onCanvas(tile) && tiles.none { it !== tile && it.z > tile.z && covers(it, tile) }
             }
             // Laptop mode: the feed that was up top last keeps its picture going out of sight, so
             // going back to it is instant. Not once the phone is warm.
@@ -811,8 +811,6 @@ class AppState(
         private set
     var mapDrawerOpen by mutableStateOf(false)
         private set
-    /** Where the drawer starts on screen, in pixels; feeds entirely below it have no picture to show. */
-    var mapDrawerTop by mutableFloatStateOf(Float.MAX_VALUE)
     /** Remembered between openings, and between sessions. */
     val mapCamZoom = PictureZoom.fromText(prefs.getString(PREF_MAP_CAM_ZOOM, null))
 
@@ -830,10 +828,7 @@ class AppState(
 
     fun toggleMapDrawer() {
         mapDrawerOpen = !mapDrawerOpen
-        if (!mapDrawerOpen) {
-            mapDrawerTop = Float.MAX_VALUE
-            storeMapCamZoom()
-        }
+        if (!mapDrawerOpen) storeMapCamZoom()
         showChrome()
     }
 
@@ -841,7 +836,6 @@ class AppState(
         mapCamFeed?.release()
         mapCamFeed = null
         mapDrawerOpen = false
-        mapDrawerTop = Float.MAX_VALUE
         storeMapCamZoom()
     }
 
