@@ -272,7 +272,11 @@ class AppState(
     fun applyVideoBudget() {
         if (tiles.isEmpty()) return
         // The map cam's picture runs shut too, for an instant peek, unless the phone needs the rest.
-        mapCamFeed?.setVideo(!browsing && !inPip && (mapDrawerOpen || thermal < android.os.PowerManager.THERMAL_STATUS_SEVERE), 1920, 1080, source = true)
+        // Nor while the map cam is on screen as a feed: no need to decode the same stream twice.
+        mapCamFeed?.setVideo(
+            !browsing && !inPip && (mapDrawerOpen || (thermal < android.os.PowerManager.THERMAL_STATUS_SEVERE && tiles.none { it.channel.isMapCam })),
+            1920, 1080, source = true,
+        )
         val shown = if (inPip) pipTile() else null
         val main = tiles.firstOrNull { it.id == bigTileId } ?: tiles.firstOrNull { it.audible } ?: tiles.maxByOrNull { it.w }
         val scale = when {
@@ -370,7 +374,7 @@ class AppState(
 
     /** The main broadcast and map cams that are live. */
     val liveOthers
-        get() = streams.values.filter { it.live && !Teams.isTeamChannel(it.login, settings.teamPrefix) && !it.login.endsWith("_map") }
+        get() = streams.values.filter { it.live && !Teams.isTeamChannel(it.login, settings.teamPrefix) }
             .sortedBy { Teams.BROADCASTS.indexOf(it.login).let { i -> if (i < 0) Teams.BROADCASTS.size else i } }
 
     fun channelOf(stream: StreamInfo) = Channel(labelOf(stream), login = stream.login, image = stream.image)
@@ -661,14 +665,11 @@ class AppState(
     /** Puts a saved session back: same feeds, layout, big tile and audio. */
     fun resumeWatching(saved: SavedWatch) {
         if (tiles.isNotEmpty()) stopAll()
-        // Sessions saved before the drawer may hold the map cam as a feed.
-        val feeds = saved.feeds.filter { !it.isMapCam }
-        if (feeds.isEmpty()) return
         runCatching { layoutMode = LayoutMode.valueOf(saved.layoutMode) }
         // Feeds come back where they were, if the screen is the same shape.
         resumeLayout = saved.layout?.let { layout -> saved.feeds.map { it.key }.zip(layout.boxes).toMap() to layout }
         browsing = false
-        addFeeds(feeds)
+        addFeeds(saved.feeds)
         tiles.firstOrNull { it.channel.key == saved.audioKey }?.let(::setAudio)
         tiles.firstOrNull { it.channel.key == saved.bigKey }?.let { bigTileId = it.id }
     }
@@ -1186,6 +1187,10 @@ class AppState(
         showChrome()
     }
 
+    /** The map cam as a feed zooms where it's being watched; the zoom stays when it's small again. */
+    fun canZoom(tile: Tile) = tile.channel.isMapCam &&
+        (isMainTile(tile) || focusTileId == tile.id || (laptopActive && tile.id == bigTileId))
+
     /** The big feed of main + strip (and the saved layout), or the only feed. Grid has no main feed. */
     fun isMainTile(tile: Tile): Boolean {
         if (tiles.size == 1) return true
@@ -1213,6 +1218,10 @@ class AppState(
      */
     fun doubleTap(tile: Tile) {
         when {
+            canZoom(tile) && mapCamZoom.zoom > 1f -> {
+                mapCamZoom.reset()
+                storeMapCamZoom()
+            }
             laptopActive -> putOnTop(tile)
             focusTileId != null -> {
                 focusTileId = null

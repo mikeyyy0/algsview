@@ -345,6 +345,39 @@ private fun Glyph(icon: ImageVector, description: String, size: Int = 24, modifi
     }
 }
 
+/**
+ * Two fingers zoom the map cam, and once zoomed one finger moves around. A single tap or double-tap
+ * still gets through.
+ */
+private fun Modifier.mapCamZoomGestures(app: AppState) = pointerInput(Unit) {
+    val zoom = app.mapCamZoom
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false)
+        var travel = Offset.Zero
+        var moving = false
+        do {
+            val event = awaitPointerEvent()
+            val pan = event.calculatePan()
+            val pinch = event.changes.count { it.pressed } >= 2
+            if (!moving) {
+                travel += pan
+                moving = pinch || (zoom.zoom > 1f && travel.getDistance() > viewConfiguration.touchSlop)
+            }
+            // No centroid once the last finger has lifted; using it would make the picture NaN.
+            val centroid = event.calculateCentroid()
+            if (moving && centroid != Offset.Unspecified) {
+                zoom.zoomBy(
+                    event.calculateZoom(),
+                    centroid.x - size.width / 2f, centroid.y - size.height / 2f,
+                    pan.x, pan.y, size.width.toFloat(), size.height.toFloat(),
+                )
+                event.changes.forEach { if (it.positionChanged()) it.consume() }
+            }
+        } while (event.changes.any { it.pressed })
+        if (moving) app.storeMapCamZoom()
+    }
+}
+
 /** The drawer's share of the screen when the main feed leaves no room under it (sideways, or filling the screen). */
 private const val DRAWER_FALLBACK = 0.38f
 /** Less room than this under the main feed isn't worth opening into. */
@@ -381,33 +414,7 @@ private fun MapDrawer(app: AppState, height: Float, modifier: Modifier) {
                 .pointerInput(Unit) {
                     detectTapGestures(onDoubleTap = { zoom.reset(); app.storeMapCamZoom() })
                 }
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false)
-                        var travel = Offset.Zero
-                        var moving = false
-                        do {
-                            val event = awaitPointerEvent()
-                            val pan = event.calculatePan()
-                            val pinch = event.changes.count { it.pressed } >= 2
-                            if (!moving) {
-                                travel += pan
-                                moving = pinch || (zoom.zoom > 1f && travel.getDistance() > viewConfiguration.touchSlop)
-                            }
-                            // No centroid once the last finger has lifted; using it would make the picture NaN.
-                            val centroid = event.calculateCentroid()
-                            if (moving && centroid != Offset.Unspecified) {
-                                zoom.zoomBy(
-                                    event.calculateZoom(),
-                                    centroid.x - size.width / 2f, centroid.y - size.height / 2f,
-                                    pan.x, pan.y, size.width.toFloat(), size.height.toFloat(),
-                                )
-                                event.changes.forEach { if (it.positionChanged()) it.consume() }
-                            }
-                        } while (event.changes.any { it.pressed })
-                        if (moving) app.storeMapCamZoom()
-                    }
-                }
+                .mapCamZoomGestures(app)
         ) {
             AndroidView(
                 factory = { context -> LayoutInflater.from(context).inflate(R.layout.player_texture, null) as PlayerView },
@@ -611,7 +618,15 @@ private fun TileView(app: AppState, tile: Tile) {
                 it.setKeepContentOnPlayerReset(true)
             },
             onRelease = { it.player = null },
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().graphicsLayer {
+                if (tile.channel.isMapCam) {
+                    val zoom = app.mapCamZoom
+                    scaleX = zoom.zoom
+                    scaleY = zoom.zoom
+                    translationX = zoom.x * size.width
+                    translationY = zoom.y * size.height
+                }
+            },
         )
         if (app.inPip) return@Box
 
@@ -627,6 +642,7 @@ private fun TileView(app: AppState, tile: Tile) {
                     )
                 }
                 .then(if (app.arranging) Modifier.arrangeGestures(app, tile) else Modifier)
+                .then(if (app.canZoom(tile) && !app.arranging) Modifier.mapCamZoomGestures(app) else Modifier)
         )
 
 
