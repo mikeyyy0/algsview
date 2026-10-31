@@ -12,7 +12,7 @@ object Teams {
     fun logins(prefixes: String, count: Int): List<String> =
         prefixes(prefixes).flatMap { p ->
             (1..count).map { "$p$it" } + if (p.endsWith("team")) listOf(p.removeSuffix("team") + "map") else emptyList()
-        } + BROADCAST
+        } + BROADCASTS
 
     fun isTeamChannel(login: String, prefixes: String) =
         prefixes(prefixes).any { p -> login.startsWith(p) && login.removePrefix(p).toIntOrNull() != null }
@@ -28,6 +28,7 @@ object Teams {
     /** How a tile labels a stream: the team from the title on team channels. */
     fun label(stream: StreamInfo, prefixes: String): String = when {
         stream.login == BROADCAST -> "Broadcast"
+        stream.login == B_STREAM -> "B stream (nicewigg)"
         isTeamChannel(stream.login, prefixes) -> teamName(stream.title).ifEmpty { channelLabel(stream.login) }
         stream.login.endsWith("_map") -> "Map cam"
         else -> stream.displayName.ifEmpty { stream.login }
@@ -65,6 +66,9 @@ object Teams {
     }
 
     const val BROADCAST = "playapex"
+    /** The unofficial second broadcast. */
+    const val B_STREAM = "nicewigg"
+    val BROADCASTS = listOf(BROADCAST, B_STREAM)
     const val DEFAULT_PREFIX = "algs1_team"
     const val DEFAULT_COUNT = 20
 }

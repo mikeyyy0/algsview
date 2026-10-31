@@ -221,9 +221,9 @@ class AppState(
     /**
      * Video only for feeds that can be seen: not while browsing, not behind a full-screen feed,
      * not tucked away in laptop mode or hidden in the pop-out, not off the canvas or entirely
-     * under another feed. Hidden ones keep playing their sound. The feed with the audio gets the
-     * best rendition; each other feed asks for the size of its tile, and with 3 or 4 feeds stays
-     * at 480p or 360p. Warm phones get less (3/4 size when hot, half when hotter, nothing forced
+     * under another feed. Hidden ones keep playing their sound. The feed with the audio and the map
+     * cam get the best rendition; the others too, as far as the connection allows, unless Lower
+     * quality on quiet feeds is on (the size of the tile, and 480p or 360p with 3 or 4). Warm phones get less (3/4 size when hot, half when hotter, nothing forced
      * to the top), and a phone near its limit shows video in the main feed only.
      */
     fun applyVideoBudget() {
@@ -266,10 +266,17 @@ class AppState(
                 return@forEach
             }
             val hearing = tile.audible && !mutedAll
+            // The map cam is small text and icons: it's useless below the top rendition.
+            val top = hearing || tile.channel.login?.endsWith("_map") == true
+            // Feeds get switched around a lot, so unless asked to save data, a small tile doesn't
+            // mean a small rendition: it's already sharp when it's brought up.
+            val fit = settings.quietQuality || scale < 1f
             tile.feed.setVideo(
-                visible && !cooling, (tile.w * scale).toInt(), (tile.h * scale).toInt(),
-                source = hearing && scale == 1f,
-                maxHeight = if (hearing) Int.MAX_VALUE else quietCap,
+                visible && !cooling,
+                if (fit) (tile.w * scale).toInt() else FULL_W,
+                if (fit) (tile.h * scale).toInt() else FULL_H,
+                source = top && scale == 1f,
+                maxHeight = if (top) Int.MAX_VALUE else quietCap,
             )
         }
     }
@@ -319,7 +326,7 @@ class AppState(
     /** The main broadcast and map cams that are live. */
     val liveOthers
         get() = streams.values.filter { it.live && !Teams.isTeamChannel(it.login, settings.teamPrefix) }
-            .sortedBy { if (it.login == Teams.BROADCAST) 0 else 1 }
+            .sortedBy { Teams.BROADCASTS.indexOf(it.login).let { i -> if (i < 0) Teams.BROADCASTS.size else i } }
 
     fun channelOf(stream: StreamInfo) = Channel(Teams.label(stream, settings.teamPrefix), login = stream.login, image = stream.image)
 
@@ -1195,6 +1202,8 @@ class AppState(
 
     companion object {
         const val MAX_FEEDS = 4
+        private const val FULL_W = 1920
+        private const val FULL_H = 1080
         private const val MAX_RECENTS = 4
         private const val PREF_LAPTOP = "laptopMode"
         private const val PREF_LAPTOP_ASKED = "laptopAsked"

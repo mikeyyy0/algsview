@@ -115,7 +115,7 @@ fun FeedPickerSheet(app: AppState, picker: FeedPicker) {
                 val others = app.liveOthers
                 if (others.isNotEmpty()) {
                     Text("Broadcast", style = Type.headline, modifier = Modifier.padding(top = 24.dp, bottom = 4.dp))
-                    others.forEach { stream -> PickRow(app, picker, app.channelOf(stream), stream.title.takeIf { stream.login == Teams.BROADCAST }) }
+                    others.forEach { stream -> PickRow(app, picker, app.channelOf(stream), stream.title.takeIf { stream.login in Teams.BROADCASTS }) }
                 }
 
                 Text("Add channel or link", style = Type.headline, modifier = Modifier.padding(top = 24.dp, bottom = 8.dp))
@@ -269,7 +269,7 @@ fun SettingsScreen(app: AppState) {
             Text("Settings", style = Type.largeTitle, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
         }
         item {
-            Group("Playback", footer = "With 3 or 4 feeds, the ones you aren't listening to drop to 480p or 360p. The one with the audio always asks for the best.") {
+            Group("Playback", footer = "Off, every feed stays as sharp as the connection allows, so switching is instant. On saves data and heat: quiet feeds match their tile, and drop to 480p or 360p with 3 or 4 feeds. The feed you hear and the map cam always get the best.") {
                 SwitchRow("Lower quality on quiet feeds", s.quietQuality, s::updateQuietQuality)
                 SwitchRow("Stream stats on tiles", s.showStats, s::updateShowStats)
             }

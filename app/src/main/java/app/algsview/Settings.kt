@@ -12,8 +12,8 @@ class Settings(context: Context) {
 
     var showStats by mutableStateOf(prefs.getBoolean("showStats", false))
         private set
-    /** With 3 or 4 feeds, the ones without the audio drop to 480p or 360p. */
-    var quietQuality by mutableStateOf(prefs.getBoolean("quietQuality", true))
+    /** Saves data: feeds without the audio match their tile, and drop to 480p or 360p with 3 or 4. Off by default. */
+    var quietQuality by mutableStateOf(prefs.getBoolean("quietQuality", false))
         private set
     /** The start of the numbered team channels; several can be given, separated by commas. */
     var teamPrefix by mutableStateOf(prefs.getString("teamPrefix", Teams.DEFAULT_PREFIX) ?: Teams.DEFAULT_PREFIX)

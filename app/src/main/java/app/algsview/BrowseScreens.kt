@@ -351,13 +351,13 @@ fun HomeScreen(app: AppState) {
                 }
             }
             item {
-                val live = app.liveOthers.filter { it.login == Teams.BROADCAST } + app.liveTeams + app.liveOthers.filter { it.login != Teams.BROADCAST }
+                val live = app.liveOthers.filter { it.login in Teams.BROADCASTS } + app.liveTeams + app.liveOthers.filter { it.login !in Teams.BROADCASTS }
                 if (live.isEmpty()) {
                     Text("Nothing from the ALGS is live right now.", style = Type.subhead, modifier = Modifier.padding(horizontal = SidePadding))
                 }
                 Shelf(app, "Live now", live) { stream, width ->
                     val channel = app.channelOf(stream)
-                    ArtCard(stream.image, channel.title, if (stream.login == Teams.BROADCAST) stream.title else Teams.channelLabel(stream.login), width, live = true) {
+                    ArtCard(stream.image, channel.title, if (stream.login in Teams.BROADCASTS) stream.title else Teams.channelLabel(stream.login), width, live = true) {
                         app.watch(channel)
                     }
                 }

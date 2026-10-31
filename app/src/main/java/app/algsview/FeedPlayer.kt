@@ -18,6 +18,7 @@ import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import androidx.media3.exoplayer.hls.playlist.DefaultHlsPlaylistParserFactory
 import androidx.media3.exoplayer.hls.playlist.DefaultHlsPlaylistTracker
 import androidx.media3.exoplayer.hls.playlist.HlsMediaPlaylist
@@ -76,7 +77,9 @@ class FeedPlayer(
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(DefaultLoadControl.DEFAULT_MIN_BUFFER_MS, DefaultLoadControl.DEFAULT_MAX_BUFFER_MS, 1_000, 2_000)
             .build()
-        player = ExoPlayer.Builder(context).setLoadControl(loadControl).build()
+        // Starts sharp: the default guess of the connection's speed begins every feed near the bottom.
+        val bandwidth = DefaultBandwidthMeter.Builder(context).setInitialBitrateEstimate(START_BITRATE).build()
+        player = ExoPlayer.Builder(context).setLoadControl(loadControl).setBandwidthMeter(bandwidth).build()
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 state = when (playbackState) {
@@ -255,6 +258,7 @@ class FeedPlayer(
         const val USER_AGENT = "Mozilla/5.0 (Android 15; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36"
         /** Twitch's target is 5 s, so this rides out breaks of several minutes. */
         const val STUCK_TARGET_DURATIONS = 200.0
+        const val START_BITRATE = 20_000_000L
         val RETRY_MS = longArrayOf(1_000, 3_000, 10_000, 30_000)
     }
 }

@@ -36,5 +36,5 @@ class TeamsTest {
         assertEquals("algs1_team7", (Teams.decide("TSM", null, streams) as Teams.Decision.Move).to.login)
 
     @Test fun loginsIncludeTheMapCamAndBroadcast() =
-        assertEquals(listOf("algs1_team1", "algs1_team2", "algs1_map", "playapex"), Teams.logins("algs1_team", 2))
+        assertEquals(listOf("algs1_team1", "algs1_team2", "algs1_map", "playapex", "nicewigg"), Teams.logins("algs1_team", 2))
 }
