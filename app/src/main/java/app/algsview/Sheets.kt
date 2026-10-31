@@ -83,8 +83,8 @@ fun FeedPickerSheet(app: AppState, picker: FeedPicker) {
                     Text(listOfNotNull(set.name, set.match).joinToString(" · "), style = Type.subhead, modifier = Modifier.padding(top = 2.dp))
                 }
                 Text(
-                    picker.note ?: if (app.tiles.isEmpty()) "Pick up to 4. You can switch any of them while watching."
-                    else "Feeds on screen are already picked. Unpick one to make room for another.",
+                    picker.note ?: if (app.tiles.isEmpty()) "Pick as many as you like. You can switch any of them while watching."
+                    else "Feeds on screen are already picked. Unpick one to remove it.",
                     style = Type.footnote.copy(color = if (picker.note != null) Ink.primary else Ink.secondary),
                     modifier = Modifier.padding(top = 4.dp),
                 )

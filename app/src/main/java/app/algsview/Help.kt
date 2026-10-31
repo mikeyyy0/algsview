@@ -44,7 +44,7 @@ private val labelShadow = Shadow(Color.Black, blurRadius = 8f)
 private val BAR_HELP = listOf(
     "close" to ("Close" to "stop watching"),
     "lock" to ("Arrange" to "move, resize, snap"),
-    "add" to ("Add" to "more feeds, up to 4"),
+    "add" to ("Add" to "more feeds"),
     "layout" to ("Layout" to "presets, save your own"),
     "map" to ("Map" to "your screenshot, with pins"),
     "scores" to ("Scores" to "the current set's standings"),

@@ -569,20 +569,16 @@ class AppState(
     fun pickedCount(sheet: FeedPicker) = tiles.size - sheet.removing.size + sheet.selected.size
 
     /**
-     * Feeds already on screen start out picked; tapping one unpicks it to make room. New feeds
-     * can be picked until the screen would hold four.
+     * Feeds already on screen start out picked; tapping one unpicks it. Any number can be picked.
      */
     fun togglePick(channel: Channel) {
         val sheet = picker ?: return
-        val full = pickedCount(sheet) >= MAX_FEEDS
         sheet.note = null
         val playing = onScreen(channel)
         when {
-            playing != null && sheet.removing.any { it.key == playing.key } ->
-                if (full) sheet.note = FULL_NOTE else sheet.removing.removeAll { it.key == playing.key }
+            playing != null && sheet.removing.any { it.key == playing.key } -> sheet.removing.removeAll { it.key == playing.key }
             playing != null -> sheet.removing.add(playing)
             sheet.selected.any { it.key == channel.key } -> sheet.selected.removeAll { it.key == channel.key }
-            full -> sheet.note = FULL_NOTE
             else -> sheet.selected.add(channel)
         }
     }
@@ -604,9 +600,6 @@ class AppState(
         browsing = false
     }
 
-    /** Room for more feeds; past four the phone's decoders start to freeze. */
-    val roomForFeeds get() = MAX_FEEDS - tiles.size
-
     /** From home: this stream on screen, joining whatever is already playing. */
     fun watch(channel: Channel) {
         browsing = false
@@ -615,17 +608,14 @@ class AppState(
     }
 
     private fun addFeeds(requested: List<Channel>) {
-        if (roomForFeeds <= 0) {
-            message = "4 feeds is the most this phone plays smoothly. Remove one or switch a feed instead."
-            return
-        }
         val first = tiles.isEmpty()
         // A feed added while one fills the screen brings the whole layout back.
         focusTileId = null
-        requested.take(roomForFeeds).forEach { channel ->
+        requested.forEach { channel ->
             val feed = FeedPlayer(context, scope, twitch)
             val used = tiles.map { it.accent }
-            val tile = Tile(nextTileId++, channel, feed, (0 until MAX_FEEDS).first { it !in used })
+            // Colours repeat past the first few feeds.
+            val tile = Tile(nextTileId++, channel, feed, Accents.indices.firstOrNull { it !in used } ?: (tiles.size % Accents.size))
             tiles.add(tile)
             raise(tile)
             feed.load(channel)
@@ -1509,7 +1499,6 @@ class AppState(
     }
 
     companion object {
-        const val MAX_FEEDS = 4
         private const val FULL_W = 1920
         private const val FULL_H = 1080
         private const val MAX_RECENTS = 4
@@ -1536,6 +1525,5 @@ class AppState(
         private const val SCORES_SHEET_HEIGHT = 0.6f
         const val SCORES_SHEET_WIDTH = 0.45f
         private const val SCORES_REQUEST = 4057
-        private const val FULL_NOTE = "4 feeds is the most this phone plays smoothly. Unpick one that's playing to make room."
     }
 }

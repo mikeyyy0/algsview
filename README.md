@@ -1,6 +1,6 @@
 # ALGS View
 
-Watch Apex Legends Global Series LAN events on a foldable Android phone: up to four Twitch streams
+Watch Apex Legends Global Series LAN events on a foldable Android phone: several Twitch streams
 at once, freely arranged, with the team you care about followed from channel to channel.
 
 **Unofficial.** Not made or endorsed by EA, Respawn, the ALGS or Twitch. No game art ships with the
@@ -8,7 +8,7 @@ app. It uses Twitch's private web API and the undocumented API behind algs.ea.co
 
 ## What it does
 
-- Up to 4 feeds: Main + strip, Grid, or your own saved layouts, with snap or free arranging.
+- As many feeds as the phone can decode: Main + strip, Grid, or your own saved layouts, with snap or free arranging.
 - Follow a team: a feed tracks the team by the numbered channels' stream titles and moves by itself
   when the team changes channel.
 - Tap a feed and its audio comes on. The map cam lives in a drawer under the main feed: top
