@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "F1Multiview"
+rootProject.name = "ALGSView"
 include(":app")

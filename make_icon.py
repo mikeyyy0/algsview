@@ -1,6 +1,6 @@
-"""Draws the Apexview launcher icon: a white F1 car in side profile on a red circle.
+"""Draws the ALGS View launcher icon: four white feed tiles (one main, three in a strip) on indigo.
 
-Writes Android adaptive-icon layers (108dp foreground PNGs per density; the red background is a
+Writes Android adaptive-icon layers (108dp foreground PNGs per density; the indigo background is a
 color resource) and legacy square/round icons, plus a preview.
 Usage: python make_icon.py <res dir> <preview.png>
 """
@@ -12,43 +12,25 @@ from PIL import Image, ImageDraw
 RES, PREVIEW = sys.argv[1], sys.argv[2]
 S = 1728                      # 108dp at 16x, downscaled later for smooth edges
 C = S // 2
-RED = (212, 0, 0)
+INDIGO = (58, 47, 191)
 WHITE = (255, 255, 255)
-
-# The car in its own units, facing right: x 0..100, y 0..30 (y down).
-BODY = [(6, 22), (6, 15), (14, 12.5), (26, 11.5), (31, 8), (37, 8), (39, 12), (46, 13),
-        (58, 14.5), (74, 17.5), (90, 20.5), (93, 22), (93, 25), (6, 25)]
-AIRBOX = [(30, 12.5), (32.5, 6.5), (36.5, 6.5), (37.5, 12)]
-REAR_WING = [(0, 4.5), (12, 4.5), (12, 8.5), (6.5, 8.5), (6.5, 20), (2.5, 20), (2.5, 8.5), (0, 8.5)]
-FRONT_WING = [(80, 24.5), (99, 24.5), (99, 22), (100, 22), (100, 26.5), (80, 26.5)]
-HALO = [(37, 12.5), (40, 10.5), (46, 11), (46.5, 12), (40.5, 12), (38.5, 13.5)]
-HELMET = (40.5, 11.2, 2.7)    # cx, cy, r
-WHEELS = [(19, 23.2, 8.8), (80, 23.4, 8.2)]
-GAP = 1.1                     # red ring that separates each wheel from the body
 
 
 def foreground() -> Image.Image:
     img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    width = S * 0.54          # wide enough to read at launcher size, wings clear of the 66dp circle
-    k = width / 100
-    ox = C - width / 2
-    oy = C - 18 * k           # centers the car's mass, which sits low
-
-    def pts(shape):
-        return [(ox + x * k, oy + y * k) for x, y in shape]
-
-    for shape in (BODY, AIRBOX, REAR_WING, FRONT_WING, HALO):
-        d.polygon(pts(shape), fill=WHITE)
-    hx, hy, hr = HELMET
-    d.ellipse((ox + (hx - hr) * k, oy + (hy - hr) * k, ox + (hx + hr) * k, oy + (hy + hr) * k), fill=WHITE)
-    for wx, wy, wr in WHEELS:
-        cx, cy = ox + wx * k, oy + wy * k
-        ring = (wr + GAP) * k
-        d.ellipse((cx - ring, cy - ring, cx + ring, cy + ring), fill=RED)
-        d.ellipse((cx - wr * k, cy - wr * k, cx + wr * k, cy + wr * k), fill=WHITE)
-        hub = wr * 0.32 * k
-        d.ellipse((cx - hub, cy - hub, cx + hub, cy + hub), fill=RED)
+    width = S * 0.50          # stays inside the adaptive icon's 66dp circle
+    height = width * 0.62
+    gap = S * 0.018
+    radius = S * 0.022
+    left, top = C - width / 2, C - height / 2
+    strip = (height - 2 * gap) / 3
+    main_w = width - gap - strip * 1.25
+    d.rounded_rectangle((left, top, left + main_w, top + height), radius=radius, fill=WHITE)
+    x = left + main_w + gap
+    for i in range(3):
+        y = top + i * (strip + gap)
+        d.rounded_rectangle((x, y, left + width, y + strip), radius=radius, fill=WHITE)
     return img
 
 
@@ -62,7 +44,7 @@ densities = {"mdpi": 1, "hdpi": 1.5, "xhdpi": 2, "xxhdpi": 3, "xxxhdpi": 4}
 
 # Legacy icons show the middle 72dp of the 108dp canvas.
 crop = int(S * 18 / 108)
-full = Image.new("RGBA", (S, S), RED + (255,))
+full = Image.new("RGBA", (S, S), INDIGO + (255,))
 full.alpha_composite(fg)
 legacy = full.crop((crop, crop, S - crop, S - crop))
 square_mask = Image.new("L", legacy.size, 0)
