@@ -47,7 +47,7 @@ private val BAR_HELP = listOf(
     "add" to ("Add" to "more feeds, up to 4"),
     "layout" to ("Layout" to "presets, save your own"),
     "map" to ("Map" to "your screenshot, with pins"),
-    "scores" to ("Scores" to "your Battlefy link, beside the feeds"),
+    "scores" to ("Scores" to "this event on Battlefy, beside the feeds"),
 )
 
 /**
@@ -153,6 +153,8 @@ private fun Legend(compact: Boolean, swapLine: Boolean) {
         Entry("Tap again", "the feed you hear: show or hide these controls")
         Group("Teams")
         Entry("Follow", "from + or a feed's menu: the feed moves when its team changes channel")
+        Group("Map cam")
+        Entry("Pinch", "it in the main spot to zoom; double-tap for the whole picture")
         Group("Map")
         Entry("Tap", "the map: drop a pin; tap a pin to remove it")
         Group("Leaving")

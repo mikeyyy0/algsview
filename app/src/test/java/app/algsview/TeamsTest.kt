@@ -35,6 +35,16 @@ class TeamsTest {
     @Test fun fillsInWhenTheTeamAppears() =
         assertEquals("algs1_team7", (Teams.decide("TSM", null, streams) as Teams.Decision.Move).to.login)
 
+    @Test fun scoresForPlayoffs() = assertEquals(
+        "https://battlefy.com/apex-legends-global-series-year-6/split-2-playoffs",
+        Teams.scoresUrl("ALGS Year 6 Split 2 Playoffs | Group Stage - Day 2 | LAS VEGAS | Apex Legends"),
+    )
+    @Test fun scoresForProLeague() = assertEquals(
+        "https://battlefy.com/apex-legends-global-series-year-6/split-2-pro-league",
+        Teams.scoresUrl("ALGS Year 6 Split 2 Pro League | Match Day #10"),
+    )
+    @Test fun scoresWithoutAnEvent() = assertEquals("https://battlefy.com/algs", Teams.scoresUrl("Apex Legends reruns"))
+
     @Test fun loginsIncludeTheMapCamAndBroadcast() =
         assertEquals(listOf("algs1_team1", "algs1_team2", "algs1_map", "playapex", "nicewigg"), Teams.logins("algs1_team", 2))
 }

@@ -25,6 +25,9 @@ data class Channel(
     val image: String? = null,
 ) {
     /** Identifies the stream, whatever its label says this match. */
+    /** The map cam has no sound, and it's small text and icons. */
+    val isMapCam get() = login?.endsWith("_map") == true
+
     val key get() = follow?.let { "follow:$it" } ?: vodId?.let { "vod:$it" } ?: "live:$login"
 }
 

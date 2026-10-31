@@ -285,8 +285,8 @@ fun SettingsScreen(app: AppState) {
             }
         }
         item {
-            Group("Scores", footer = "The Scores button opens this link beside the feeds.") {
-                SettingField("Battlefy tournament link", s.battlefyUrl, "battlefy.com/…", s::updateBattlefyUrl)
+            Group("Scores", footer = "The Scores button finds the current event from the broadcast's title. A link here replaces that; leave it empty to go back.") {
+                SettingField("Battlefy link (optional)", s.battlefyUrl, "Found automatically", s::updateBattlefyUrl)
             }
         }
         item {

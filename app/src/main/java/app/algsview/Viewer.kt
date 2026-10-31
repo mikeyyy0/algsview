@@ -13,6 +13,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateRotation
 import androidx.compose.foundation.gestures.calculateZoom
@@ -85,6 +86,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -491,6 +493,7 @@ private fun TileView(app: AppState, tile: Tile) {
             )
             .zIndex(tile.z)
             .helpAnchor(app, "tile:${tile.id}")
+            .clipToBounds()
             .background(Color.Black)
     ) {
         AndroidView(
@@ -503,9 +506,18 @@ private fun TileView(app: AppState, tile: Tile) {
                 it.setKeepContentOnPlayerReset(true)
             },
             onRelease = { it.player = null },
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().graphicsLayer {
+                scaleX = tile.zoom
+                scaleY = tile.zoom
+                translationX = tile.zoomX
+                translationY = tile.zoomY
+            },
         )
         if (app.inPip) return@Box
+
+        val zoomable = app.canZoom(tile) && !app.arranging
+        // Moved out of the main spot, the whole picture comes back.
+        LaunchedEffect(zoomable) { if (!zoomable) tile.resetZoom() }
 
         Box(
             Modifier
@@ -519,6 +531,7 @@ private fun TileView(app: AppState, tile: Tile) {
                     )
                 }
                 .then(if (app.arranging) Modifier.arrangeGestures(app, tile) else Modifier)
+                .then(if (zoomable) Modifier.zoomGestures(tile) else Modifier)
         )
 
 
@@ -597,6 +610,32 @@ private fun TileView(app: AppState, tile: Tile) {
 }
 
 /**
+ * The map cam in the main spot: two fingers zoom, and once zoomed one finger moves around. A single
+ * tap or double-tap still gets through (a double-tap goes back to the whole picture).
+ */
+private fun Modifier.zoomGestures(tile: Tile) = pointerInput(tile.id) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false)
+        var travel = Offset.Zero
+        var moving = false
+        do {
+            val event = awaitPointerEvent()
+            val pan = event.calculatePan()
+            val pinch = event.changes.count { it.pressed } >= 2
+            if (!moving) {
+                travel += pan
+                moving = pinch || (tile.zoom > 1f && travel.getDistance() > viewConfiguration.touchSlop)
+            }
+            if (moving) {
+                val centre = Offset(size.width / 2f, size.height / 2f)
+                tile.zoomBy(event.calculateZoom(), event.calculateCentroid() - centre, pan)
+                event.changes.forEach { if (it.positionChanged()) it.consume() }
+            }
+        } while (event.changes.any { it.pressed })
+    }
+}
+
+/**
  * While arranging: one finger moves the tile, two resize it. Starts past the touch slop so taps
  * and double-taps still work, and stops if the map claimed the touch first.
  */
@@ -663,7 +702,7 @@ private fun TileHeader(app: AppState, tile: Tile) {
                     }
                 }
                 // With one feed there's no audio to move; Mute all is in the controls.
-                if (app.tiles.size > 1) {
+                if (app.tiles.size > 1 && !tile.channel.isMapCam) {
                     val hearing = tile.audible && !app.mutedAll
                     Glyph(if (hearing) Icons.Rounded.VolumeUp else Icons.Rounded.VolumeOff, if (hearing) "Playing audio" else "Play audio from this feed", 20) {
                         app.setAudio(tile, byUser = true)
@@ -711,7 +750,7 @@ private fun TileMenuSheet(app: AppState, tile: Tile) {
             Text(tile.channel.title, style = Type.title2)
             tile.channel.login?.let { Text(Teams.channelLabel(it), style = Type.footnote, modifier = Modifier.padding(top = 2.dp)) }
             Row(Modifier.padding(vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (!tile.audible) SecondaryButton("Play its audio") { app.setAudio(tile, byUser = true); app.closeTileMenu() }
+                if (!tile.audible && !tile.channel.isMapCam) SecondaryButton("Play its audio") { app.setAudio(tile, byUser = true); app.closeTileMenu() }
                 if (tile.channel.follow != null) SecondaryButton("Stop following") { app.toggleFollow(tile) }
                 else if (tile.channel.login?.let { Teams.isTeamChannel(it, app.settings.teamPrefix) } == true) SecondaryButton("Follow this team") { app.toggleFollow(tile) }
                 SecondaryButton(if (tile.pinned) "Unpin" else "Pin") { app.togglePin(tile); app.closeTileMenu() }

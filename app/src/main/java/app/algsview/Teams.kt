@@ -65,6 +65,23 @@ object Teams {
         }
     }
 
+    /**
+     * Battlefy's page for the event in the broadcast's title ("ALGS Year 6 Split 2 Playoffs | …").
+     * battlefy.com/algs always leads to the current year, so it's the fallback.
+     */
+    fun scoresUrl(broadcastTitle: String?): String {
+        val title = broadcastTitle.orEmpty()
+        val year = Regex("Year (\\d+)", RegexOption.IGNORE_CASE).find(title)?.groupValues?.get(1) ?: return SCORES_HOME
+        val hub = "https://battlefy.com/apex-legends-global-series-year-$year"
+        val split = Regex("Split (\\d+)", RegexOption.IGNORE_CASE).find(title)?.groupValues?.get(1) ?: return hub
+        return when {
+            title.contains("Playoffs", ignoreCase = true) -> "$hub/split-$split-playoffs"
+            title.contains("Pro League", ignoreCase = true) -> "$hub/split-$split-pro-league"
+            else -> hub
+        }
+    }
+
+    private const val SCORES_HOME = "https://battlefy.com/algs"
     const val BROADCAST = "playapex"
     /** The unofficial second broadcast. */
     const val B_STREAM = "nicewigg"

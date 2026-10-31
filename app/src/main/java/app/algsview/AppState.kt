@@ -36,6 +36,27 @@ class Tile(val id: Int, channel: Channel, val feed: FeedPlayer, val accent: Int)
     var pinned by mutableStateOf(false)
     /** Showing, but its picture paused while the phone is too hot (sound and place kept). */
     var coolingOff by mutableStateOf(false)
+    /** Pinch zoom on the picture, for the map cam in the main spot: 1 is the whole picture. */
+    var zoom by mutableFloatStateOf(1f)
+    var zoomX by mutableFloatStateOf(0f)
+    var zoomY by mutableFloatStateOf(0f)
+
+    /** Zooms by [factor] around [centroid] (from the tile's centre) and moves by [pan], staying over the picture. */
+    fun zoomBy(factor: Float, centroid: androidx.compose.ui.geometry.Offset, pan: androidx.compose.ui.geometry.Offset) {
+        val next = (zoom * factor).coerceIn(1f, MAX_ZOOM)
+        val k = next / zoom
+        val limitX = w * (next - 1f) / 2f
+        val limitY = h * (next - 1f) / 2f
+        zoomX = (zoomX * k + centroid.x * (1f - k) + pan.x).coerceIn(-limitX, limitX)
+        zoomY = (zoomY * k + centroid.y * (1f - k) + pan.y).coerceIn(-limitY, limitY)
+        zoom = next
+    }
+
+    fun resetZoom() {
+        zoom = 1f
+        zoomX = 0f
+        zoomY = 0f
+    }
 
     fun resize(width: Float) {
         w = width.coerceIn(MIN_WIDTH, 4000f)
@@ -50,6 +71,7 @@ class Tile(val id: Int, channel: Channel, val feed: FeedPlayer, val accent: Int)
 
     companion object {
         const val MIN_WIDTH = 240f
+        private const val MAX_ZOOM = 6f
     }
 }
 
@@ -269,7 +291,7 @@ class AppState(
             }
             val hearing = tile.audible && !mutedAll
             // The map cam is small text and icons: it's useless below the top rendition.
-            val top = hearing || tile.channel.login?.endsWith("_map") == true
+            val top = hearing || tile.channel.isMapCam
             // Feeds get switched around a lot, so unless asked to save data, a small tile doesn't
             // mean a small rendition: it's already sharp when it's brought up.
             val fit = settings.quietQuality || scale < 1f
@@ -277,7 +299,7 @@ class AppState(
                 visible && !cooling,
                 if (fit) (tile.w * scale).toInt() else FULL_W,
                 if (fit) (tile.h * scale).toInt() else FULL_H,
-                source = top && scale == 1f,
+                source = tile.channel.isMapCam || (hearing && scale == 1f),
                 maxHeight = if (top) Int.MAX_VALUE else quietCap,
             )
         }
@@ -572,7 +594,7 @@ class AppState(
         // A fresh start uses the layout picked as default (Save layout makes it the custom one).
         if (first && resumeLayout == null) layoutMode = defaultLayoutMode
         // Keep the audio where it was; new feeds start muted.
-        setAudio(tiles.firstOrNull { it.audible } ?: tiles.first())
+        (tiles.firstOrNull { it.audible } ?: tiles.firstOrNull { !it.channel.isMapCam })?.let(::setAudio)
         // A feed more means a fresh fit of the layout in use.
         handPlaced = false
         layoutRequest++
@@ -629,8 +651,15 @@ class AppState(
     fun switchFeed(tile: Tile, channel: Channel) {
         tileMenu = null
         if (channel.key == tile.channel.key) return
+        val hadAudio = tile.audible
         tile.channel = channel
+        tile.resetZoom()
         tile.feed.load(channel)
+        // A feed with the audio switched to the map cam hands it on; silence can't be "heard".
+        if (channel.isMapCam && hadAudio) {
+            tile.audible = false
+            tiles.firstOrNull { !it.channel.isMapCam }?.let(::setAudio)
+        }
         if (laptopActive && tile.id == bigTileId) applyVideoBudget()
     }
 
@@ -1051,6 +1080,8 @@ class AppState(
 
     /** Moves the audio to [tile]. Choosing a feed to listen to also ends Mute all. */
     fun setAudio(tile: Tile, byUser: Boolean = false) {
+        // The map cam has no sound to move to.
+        if (tile.channel.isMapCam) return
         if (byUser) mutedAll = false
         tiles.forEach {
             it.audible = it === tile
@@ -1065,6 +1096,10 @@ class AppState(
         showChrome()
     }
 
+    /** The map cam zooms where it's the feed being watched: the main spot, filling the screen, or up top in laptop mode. */
+    fun canZoom(tile: Tile) = tile.channel.isMapCam &&
+        (isMainTile(tile) || focusTileId == tile.id || (laptopActive && tile.id == bigTileId))
+
     /** The big feed of main + strip (and the saved layout), or the only feed. Grid has no main feed. */
     fun isMainTile(tile: Tile): Boolean {
         if (tiles.size == 1) return true
@@ -1078,7 +1113,7 @@ class AppState(
      * controls.
      */
     fun tapFeed(tile: Tile) {
-        if (tile.audible && !mutedAll) toggleChrome()
+        if (tile.channel.isMapCam || (tile.audible && !mutedAll)) toggleChrome()
         else {
             setAudio(tile, byUser = true)
             message = "Listening to ${tile.channel.title}"
@@ -1092,6 +1127,7 @@ class AppState(
      */
     fun doubleTap(tile: Tile) {
         when {
+            tile.zoom > 1f -> tile.resetZoom()
             laptopActive -> putOnTop(tile)
             focusTileId != null -> {
                 focusTileId = null
@@ -1195,16 +1231,14 @@ class AppState(
     // Scores: Battlefy in a Chrome sheet, so the feeds keep playing beside it.
 
     /**
-     * Opens the Battlefy link as a Chrome sheet over part of the screen (up from the bottom, or
+     * Opens Battlefy as a Chrome sheet over part of the screen (up from the bottom, or
      * down the side when unfolded). A browser that can't do sheets opens it full screen. Never pop
      * into picture-in-picture and then open a page: Play Protect flagged Apexview for that.
      */
     fun openScores(activity: android.app.Activity) {
+        // A link set in Settings wins; otherwise the event the main broadcast says it's showing.
         val url = settings.battlefyUrl.trim().let { if (it.isEmpty() || "://" in it) it else "https://$it" }
-        if (url.isEmpty()) {
-            message = "Add your Battlefy link in Settings to see the scores here."
-            return
-        }
+            .ifEmpty { Teams.scoresUrl(streams[Teams.BROADCAST]?.title) }
         val screen = activity.resources.displayMetrics
         val sheet = CustomTabsIntent.Builder()
             .setInitialActivityHeightPx((screen.heightPixels * SCORES_SHEET_HEIGHT).toInt(), CustomTabsIntent.ACTIVITY_HEIGHT_ADJUSTABLE)
@@ -1297,7 +1331,7 @@ class AppState(
             return
         }
         if (focusTileId == tile.id) focusTileId = null
-        if (tile.audible) setAudio(tiles.first())
+        if (tile.audible) tiles.firstOrNull { !it.channel.isMapCam }?.let(::setAudio)
         if (bigTileId == tile.id) bigTileId = null
         // The rest close up to fill the space.
         handPlaced = false
