@@ -23,8 +23,8 @@ android {
         minSdk = 29
         targetSdk = 35
         // Bump both for every build that goes to the phone, so it's clear which one is installed.
-        versionCode = 6
-        versionName = "0.6"
+        versionCode = 7
+        versionName = "0.7"
         val builtAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("MMM d, HH:mm"))
         buildConfigField("String", "BUILT_AT", "\"$builtAt\"")
         // Where updates come from (owner/repo on GitHub). A fork points this at its own releases.
