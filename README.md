@@ -11,8 +11,8 @@ app. It uses Twitch's private web API and the undocumented API behind algs.ea.co
 - Up to 4 feeds: Main + strip, Grid, or your own saved layouts, with snap or free arranging.
 - Follow a team: a feed tracks the team by the numbered channels' stream titles and moves by itself
   when the team changes channel.
-- Tap a feed and its audio comes on. The map cam never takes audio, always asks for the top
-  rendition, and zooms with a pinch in the main spot.
+- Tap a feed and its audio comes on. The map cam lives in a drawer under the main feed: top
+  rendition, no audio, and a pinch zoom it remembers.
 - Ad breaks hold the last frame, the way Streamlink's `--twitch-disable-ads` does. Ads are not
   fetched or played, and subscriber status is not spoofed.
 - Your own map screenshots as an overlay, with coloured pins. Apex has no public live position data.

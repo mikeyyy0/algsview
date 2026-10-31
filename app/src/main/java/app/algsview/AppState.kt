@@ -36,29 +36,6 @@ class Tile(val id: Int, channel: Channel, val feed: FeedPlayer, val accent: Int)
     var pinned by mutableStateOf(false)
     /** Showing, but its picture paused while the phone is too hot (sound and place kept). */
     var coolingOff by mutableStateOf(false)
-    /**
-     * Pinch zoom on the picture, for the map cam: 1 is the whole picture. The offset is in fractions
-     * of the tile, so a zoomed map shows the same part of itself at any tile size.
-     */
-    var zoom by mutableFloatStateOf(1f)
-    var zoomX by mutableFloatStateOf(0f)
-    var zoomY by mutableFloatStateOf(0f)
-
-    /** Zooms by [factor] around [centroid] (from the tile's centre) and moves by [pan], staying over the picture. */
-    fun zoomBy(factor: Float, centroid: androidx.compose.ui.geometry.Offset, pan: androidx.compose.ui.geometry.Offset) {
-        val next = (zoom * factor).coerceIn(1f, MAX_ZOOM)
-        val k = next / zoom
-        val limit = (next - 1f) / 2f
-        zoomX = (zoomX * k + (centroid.x * (1f - k) + pan.x) / w).coerceIn(-limit, limit)
-        zoomY = (zoomY * k + (centroid.y * (1f - k) + pan.y) / h).coerceIn(-limit, limit)
-        zoom = next
-    }
-
-    fun resetZoom() {
-        zoom = 1f
-        zoomX = 0f
-        zoomY = 0f
-    }
 
     fun resize(width: Float) {
         w = width.coerceIn(MIN_WIDTH, 4000f)
@@ -73,7 +50,46 @@ class Tile(val id: Int, channel: Channel, val feed: FeedPlayer, val accent: Int)
 
     companion object {
         const val MIN_WIDTH = 240f
-        private const val MAX_ZOOM = 6f
+    }
+}
+
+/**
+ * Pinch zoom on a picture: 1 is the whole picture. The offset is in fractions of the picture's box,
+ * so the same part stays framed at any size.
+ */
+class PictureZoom(zoom: Float = 1f, x: Float = 0f, y: Float = 0f) {
+    var zoom by mutableFloatStateOf(zoom)
+        private set
+    var x by mutableFloatStateOf(x)
+        private set
+    var y by mutableFloatStateOf(y)
+        private set
+
+    /** Zooms by [factor] around ([cx], [cy]), measured from the box's centre, and moves by the pan, staying over the picture. */
+    fun zoomBy(factor: Float, cx: Float, cy: Float, panX: Float, panY: Float, width: Float, height: Float) {
+        val next = (zoom * factor).coerceIn(1f, MAX)
+        val k = next / zoom
+        val limit = (next - 1f) / 2f
+        x = (x * k + (cx * (1f - k) + panX) / width).coerceIn(-limit, limit)
+        y = (y * k + (cy * (1f - k) + panY) / height).coerceIn(-limit, limit)
+        zoom = next
+    }
+
+    fun reset() {
+        zoom = 1f
+        x = 0f
+        y = 0f
+    }
+
+    fun toText() = "$zoom,$x,$y"
+
+    companion object {
+        private const val MAX = 6f
+
+        fun fromText(text: String?): PictureZoom {
+            val v = text?.split(',')?.mapNotNull { it.toFloatOrNull() }?.takeIf { it.size == 3 } ?: return PictureZoom()
+            return PictureZoom(v[0], v[1], v[2])
+        }
     }
 }
 
@@ -274,7 +290,7 @@ class AppState(
                 inPip -> tile === shown
                 laptopActive -> tile.id == bigTileId || tiles.size == 1
                 focusTileId != null -> tile.id == focusTileId
-                else -> onCanvas(tile) && tiles.none { it !== tile && it.z > tile.z && covers(it, tile) }
+                else -> onCanvas(tile) && tile.y < mapDrawerTop && tiles.none { it !== tile && it.z > tile.z && covers(it, tile) }
             }
             // Laptop mode: the feed that was up top last keeps its picture going out of sight, so
             // going back to it is instant. Not once the phone is warm.
@@ -352,7 +368,7 @@ class AppState(
 
     /** The main broadcast and map cams that are live. */
     val liveOthers
-        get() = streams.values.filter { it.live && !Teams.isTeamChannel(it.login, settings.teamPrefix) }
+        get() = streams.values.filter { it.live && !Teams.isTeamChannel(it.login, settings.teamPrefix) && !it.login.endsWith("_map") }
             .sortedBy { Teams.BROADCASTS.indexOf(it.login).let { i -> if (i < 0) Teams.BROADCASTS.size else i } }
 
     fun channelOf(stream: StreamInfo) = Channel(labelOf(stream), login = stream.login, image = stream.image)
@@ -651,11 +667,14 @@ class AppState(
     /** Puts a saved session back: same feeds, layout, big tile and audio. */
     fun resumeWatching(saved: SavedWatch) {
         if (tiles.isNotEmpty()) stopAll()
+        // Sessions saved before the drawer may hold the map cam as a feed.
+        val feeds = saved.feeds.filter { !it.isMapCam }
+        if (feeds.isEmpty()) return
         runCatching { layoutMode = LayoutMode.valueOf(saved.layoutMode) }
         // Feeds come back where they were, if the screen is the same shape.
         resumeLayout = saved.layout?.let { layout -> saved.feeds.map { it.key }.zip(layout.boxes).toMap() to layout }
         browsing = false
-        addFeeds(saved.feeds)
+        addFeeds(feeds)
         tiles.firstOrNull { it.channel.key == saved.audioKey }?.let(::setAudio)
         tiles.firstOrNull { it.channel.key == saved.bigKey }?.let { bigTileId = it.id }
     }
@@ -676,7 +695,6 @@ class AppState(
         if (channel.key == tile.channel.key) return
         val hadAudio = tile.audible
         tile.channel = channel
-        tile.resetZoom()
         tile.feed.load(channel)
         // A feed with the audio switched to the map cam hands it on; silence can't be "heard".
         if (channel.isMapCam && hadAudio) {
@@ -788,6 +806,52 @@ class AppState(
 
     /** The canvas's size in pixels, for keeping things on screen. */
     val canvasSize get() = canvasW to canvasH
+
+    // The map cam: not a feed, but a drawer of its own under the main feed.
+
+    /** The map cam's channel, while it's live. */
+    val mapCamLogin get() = streams.values.firstOrNull { it.live && it.login.endsWith("_map") }?.login
+    /** Its player, only while the drawer is open: a fifth stream costs too much to keep running shut. */
+    var mapCamFeed by mutableStateOf<FeedPlayer?>(null)
+        private set
+    val mapDrawerOpen get() = mapCamFeed != null
+    /** Where the drawer starts on screen, in pixels; feeds entirely below it have no picture to show. */
+    var mapDrawerTop by mutableFloatStateOf(Float.MAX_VALUE)
+    /** Remembered between openings, and between sessions. */
+    val mapCamZoom = PictureZoom.fromText(prefs.getString(PREF_MAP_CAM_ZOOM, null))
+
+    fun toggleMapDrawer() {
+        val open = mapCamFeed
+        if (open != null) closeMapDrawer()
+        else mapCamLogin?.let { login ->
+            mapCamFeed = FeedPlayer(context, scope, twitch).apply {
+                setAudible(false)
+                setVideo(true, 1920, 1080, source = true)
+                player.playWhenReady = playing
+                load(Channel("Map cam", login = login))
+            }
+        }
+        showChrome()
+    }
+
+    private fun closeMapDrawer() {
+        mapCamFeed?.release()
+        mapCamFeed = null
+        mapDrawerTop = Float.MAX_VALUE
+        storeMapCamZoom()
+    }
+
+    fun storeMapCamZoom() {
+        prefs.edit().putString(PREF_MAP_CAM_ZOOM, mapCamZoom.toText()).apply()
+    }
+
+    /** The bottom edge of the main feed, where the drawer can start without covering it. */
+    fun mainFeedBottom(): Float? {
+        hinge?.takeIf { laptopActive }?.let { return it.second }
+        val main = tiles.firstOrNull { it.id == focusTileId } ?: tiles.firstOrNull { it.id == bigTileId && layoutMode != LayoutMode.GRID }
+            ?: tiles.minWithOrNull(compareBy<Tile>({ -it.w }, { it.y }))
+        return main?.let { it.y + it.h }
+    }
 
     // The map: images the person imported, with their pins.
 
@@ -1119,10 +1183,6 @@ class AppState(
         showChrome()
     }
 
-    /** The map cam zooms where it's the feed being watched: the main spot, filling the screen, or up top in laptop mode. */
-    fun canZoom(tile: Tile) = tile.channel.isMapCam &&
-        (isMainTile(tile) || focusTileId == tile.id || (laptopActive && tile.id == bigTileId))
-
     /** The big feed of main + strip (and the saved layout), or the only feed. Grid has no main feed. */
     fun isMainTile(tile: Tile): Boolean {
         if (tiles.size == 1) return true
@@ -1150,7 +1210,6 @@ class AppState(
      */
     fun doubleTap(tile: Tile) {
         when {
-            tile.zoom > 1f && canZoom(tile) -> tile.resetZoom()
             laptopActive -> putOnTop(tile)
             focusTileId != null -> {
                 focusTileId = null
@@ -1314,6 +1373,8 @@ class AppState(
     fun setPip(on: Boolean) {
         inPip = on
         val shown = pipTile()
+        // The pop-out shows one feed; the drawer has no place in it.
+        if (on) closeMapDrawer()
         tiles.forEach { tile ->
             tile.feed.player.playWhenReady = playing && (!on || tile === shown || tile.audible)
         }
@@ -1364,6 +1425,7 @@ class AppState(
     fun stopAll() {
         // Closing the viewer keeps the session, so Continue watching can bring it back.
         saveWatch()
+        closeMapDrawer()
         tiles.forEach { it.feed.release() }
         tiles.clear()
         browsing = false
@@ -1401,6 +1463,10 @@ class AppState(
             // Resuming live means live, not where it paused.
             if (playing && it.channel.vodId == null) it.feed.player.seekToDefaultPosition()
             it.feed.player.playWhenReady = playing && (!inPip || it === shown || it.audible)
+        }
+        mapCamFeed?.player?.let {
+            if (playing) it.seekToDefaultPosition()
+            it.playWhenReady = playing && !inPip
         }
         showChrome()
     }
@@ -1456,6 +1522,7 @@ class AppState(
         private const val PREF_DEFAULT_LAYOUT = "defaultLayout"
         private const val PREF_SNAP = "snap"
         private const val PREF_MAPS = "maps"
+        private const val PREF_MAP_CAM_ZOOM = "mapCamZoom"
         private const val PREF_CURRENT_MAP = "currentMap"
         private const val PREF_MAP_PANEL = "mapPanel"
         private const val PREF_LAPTOP_MAP = "laptopMapPanel"
