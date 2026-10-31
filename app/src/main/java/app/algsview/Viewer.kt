@@ -349,97 +349,99 @@ private fun Glyph(icon: ImageVector, description: String, size: Int = 24, modifi
 private const val DRAWER_FALLBACK = 0.38f
 /** Less room than this under the main feed isn't worth opening into. */
 private const val DRAWER_MIN = 0.22f
+private const val DRAWER_SLIDE_MS = 340
+private val DRAWER_TAB_HEIGHT = 52.dp
 
 /**
- * The map cam: a little tab at the bottom that opens a drawer starting right under the main feed,
- * so the main feed is never covered. Pinch to zoom, one finger moves around once zoomed, double-tap
- * for the whole picture. The zoom is remembered.
+ * The map cam: a tab at the bottom that slides a drawer up to just under the main feed, so the main
+ * feed is never covered. The tab rides on the drawer's top edge. The stream runs all the time, so
+ * there's nothing to wait for. Pinch to zoom, one finger moves around once zoomed, double-tap for
+ * the whole picture. The zoom is remembered.
  */
 @Composable
 private fun MapDrawer(app: AppState, height: Float, modifier: Modifier) {
-    if (app.mapCamLogin == null && !app.mapDrawerOpen) return
+    val feed = app.mapCamFeed ?: return
     val density = LocalDensity.current
-    val feed = app.mapCamFeed
-    val motion = tween<IntOffset>(Motion.SCREEN_MS, easing = EaseOut)
+    val open = app.mapDrawerOpen
     val room = app.mainFeedBottom()?.let { height - it }?.takeIf { it >= height * DRAWER_MIN } ?: (height * DRAWER_FALLBACK)
-    // Clear of the playback controls while they're up.
-    val lift by animateDpAsState(if (app.chromeVisible && !app.arranging && !app.mapDrawerOpen) 110.dp else 8.dp, tween(Motion.SCREEN_MS, easing = EaseOut), label = "mapTab")
-    Box(modifier.fillMaxWidth()) {
-        AnimatedVisibility(
-            feed != null,
-            enter = slideInVertically(motion) { it },
-            exit = slideOutVertically(motion) { it },
-        ) {
-            LaunchedEffect(room) { app.mapDrawerTop = height - room }
-            val zoom = app.mapCamZoom
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(with(density) { room.toDp() })
-                    .clipToBounds()
-                    .background(Color.Black)
-                    .pointerInput(Unit) {
-                        detectTapGestures(onDoubleTap = { zoom.reset(); app.storeMapCamZoom() })
-                    }
-                    .pointerInput(Unit) {
-                        awaitEachGesture {
-                            awaitFirstDown(requireUnconsumed = false)
-                            var travel = Offset.Zero
-                            var moving = false
-                            do {
-                                val event = awaitPointerEvent()
-                                val pan = event.calculatePan()
-                                val pinch = event.changes.count { it.pressed } >= 2
-                                if (!moving) {
-                                    travel += pan
-                                    moving = pinch || (zoom.zoom > 1f && travel.getDistance() > viewConfiguration.touchSlop)
-                                }
-                                // No centroid once the last finger has lifted; using it would make the picture NaN.
-                                val centroid = event.calculateCentroid()
-                                if (moving && centroid != Offset.Unspecified) {
-                                    zoom.zoomBy(
-                                        event.calculateZoom(),
-                                        centroid.x - size.width / 2f, centroid.y - size.height / 2f,
-                                        pan.x, pan.y, size.width.toFloat(), size.height.toFloat(),
-                                    )
-                                    event.changes.forEach { if (it.positionChanged()) it.consume() }
-                                }
-                            } while (event.changes.any { it.pressed })
-                            if (moving) app.storeMapCamZoom()
-                        }
-                    }
-            ) {
-                // Held through the slide away, when the feed itself is already gone.
-                feed?.let { current ->
-                    AndroidView(
-                        factory = { context -> LayoutInflater.from(context).inflate(R.layout.player_texture, null) as PlayerView },
-                        update = { it.player = current.player },
-                        onRelease = { it.player = null },
-                        modifier = Modifier.fillMaxSize().graphicsLayer {
-                            scaleX = zoom.zoom
-                            scaleY = zoom.zoom
-                            translationX = zoom.x * size.width
-                            translationY = zoom.y * size.height
-                        },
-                    )
-                    BufferingRing(current, Modifier.align(Alignment.Center))
+    val slid by animateFloatAsState(if (open) 1f else 0f, tween(DRAWER_SLIDE_MS, easing = EaseOut), label = "mapDrawer")
+    // Shut, the tab sits clear of the playback controls while they're up.
+    val rest by animateDpAsState(if (app.chromeVisible && !app.arranging && !open) 110.dp else 10.dp, tween(Motion.SCREEN_MS, easing = EaseOut), label = "mapTab")
+    LaunchedEffect(open, room) { if (open) app.mapDrawerTop = height - room }
+    val zoom = app.mapCamZoom
+    Box(modifier.fillMaxSize()) {
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(with(density) { room.toDp() })
+                .graphicsLayer { translationY = (1f - slid) * room }
+                .clipToBounds()
+                .background(Color.Black)
+                .pointerInput(Unit) {
+                    detectTapGestures(onDoubleTap = { zoom.reset(); app.storeMapCamZoom() })
                 }
-            }
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        var travel = Offset.Zero
+                        var moving = false
+                        do {
+                            val event = awaitPointerEvent()
+                            val pan = event.calculatePan()
+                            val pinch = event.changes.count { it.pressed } >= 2
+                            if (!moving) {
+                                travel += pan
+                                moving = pinch || (zoom.zoom > 1f && travel.getDistance() > viewConfiguration.touchSlop)
+                            }
+                            // No centroid once the last finger has lifted; using it would make the picture NaN.
+                            val centroid = event.calculateCentroid()
+                            if (moving && centroid != Offset.Unspecified) {
+                                zoom.zoomBy(
+                                    event.calculateZoom(),
+                                    centroid.x - size.width / 2f, centroid.y - size.height / 2f,
+                                    pan.x, pan.y, size.width.toFloat(), size.height.toFloat(),
+                                )
+                                event.changes.forEach { if (it.positionChanged()) it.consume() }
+                            }
+                        } while (event.changes.any { it.pressed })
+                        if (moving) app.storeMapCamZoom()
+                    }
+                }
+        ) {
+            AndroidView(
+                factory = { context -> LayoutInflater.from(context).inflate(R.layout.player_texture, null) as PlayerView },
+                update = { it.player = feed.player },
+                onRelease = { it.player = null },
+                modifier = Modifier.fillMaxSize().graphicsLayer {
+                    scaleX = zoom.zoom
+                    scaleY = zoom.zoom
+                    translationX = zoom.x * size.width
+                    translationY = zoom.y * size.height
+                },
+            )
+            BufferingRing(feed, Modifier.align(Alignment.Center))
         }
         Row(
             Modifier
-                .align(if (feed != null) Alignment.TopCenter else Alignment.BottomCenter)
-                .padding(top = 6.dp, bottom = lift)
+                .align(Alignment.BottomCenter)
+                .offset {
+                    // From its resting place up to the top edge of the open drawer.
+                    val shut = rest.toPx()
+                    val raised = room - DRAWER_TAB_HEIGHT.toPx() - 6.dp.toPx()
+                    IntOffset(0, -(shut + (raised - shut) * slid).roundToInt())
+                }
+                .height(DRAWER_TAB_HEIGHT)
                 .pressable(onClick = app::toggleMapDrawer)
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color.Black.copy(alpha = 0.65f))
-                .padding(horizontal = 14.dp, vertical = 6.dp),
+                .clip(RoundedCornerShape(26.dp))
+                .background(Color.Black.copy(alpha = 0.72f))
+                .padding(horizontal = 32.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Map", style = Type.footnote.copy(color = Ink.primary))
+            Text("Map", style = Type.headline.copy(color = Ink.primary))
             Icon(
-                if (feed != null) Icons.Rounded.KeyboardArrowDown else Icons.Rounded.KeyboardArrowUp, null,
-                tint = Ink.primary, modifier = Modifier.padding(start = 4.dp).size(16.dp),
+                if (open) Icons.Rounded.KeyboardArrowDown else Icons.Rounded.KeyboardArrowUp, null,
+                tint = Ink.primary, modifier = Modifier.padding(start = 6.dp).size(26.dp),
             )
         }
     }

@@ -271,6 +271,8 @@ class AppState(
      */
     fun applyVideoBudget() {
         if (tiles.isEmpty()) return
+        // The map cam's picture runs shut too, for an instant peek, unless the phone needs the rest.
+        mapCamFeed?.setVideo(!browsing && !inPip && (mapDrawerOpen || thermal < android.os.PowerManager.THERMAL_STATUS_SEVERE), 1920, 1080, source = true)
         val shown = if (inPip) pipTile() else null
         val main = tiles.firstOrNull { it.id == bigTileId } ?: tiles.firstOrNull { it.audible } ?: tiles.maxByOrNull { it.w }
         val scale = when {
@@ -404,6 +406,7 @@ class AppState(
         streams.clear()
         list.forEach { streams[it.login] = it }
         applyFollows(list)
+        ensureMapCam()
         tiles.forEach { tile ->
             val login = tile.channel.login
             val stream = login?.let { streams[it] } ?: return@forEach
@@ -622,6 +625,7 @@ class AppState(
         }
         // A fresh start uses the layout picked as default (Save layout makes it the custom one).
         if (first && resumeLayout == null) layoutMode = defaultLayoutMode
+        ensureMapCam()
         // Keep the audio where it was; new feeds start muted.
         (tiles.firstOrNull { it.audible } ?: tiles.firstOrNull { !it.channel.isMapCam })?.let(::setAudio)
         // A feed more means a fresh fit of the layout in use.
@@ -801,32 +805,41 @@ class AppState(
 
     /** The map cam's channel, while it's live. */
     val mapCamLogin get() = streams.values.firstOrNull { it.live && it.login.endsWith("_map") }?.login
-    /** Its player, only while the drawer is open: a fifth stream costs too much to keep running shut. */
+    /** Its player, running the whole time feeds are on screen, so opening the drawer is instant. */
     var mapCamFeed by mutableStateOf<FeedPlayer?>(null)
         private set
-    val mapDrawerOpen get() = mapCamFeed != null
+    var mapDrawerOpen by mutableStateOf(false)
+        private set
     /** Where the drawer starts on screen, in pixels; feeds entirely below it have no picture to show. */
     var mapDrawerTop by mutableFloatStateOf(Float.MAX_VALUE)
     /** Remembered between openings, and between sessions. */
     val mapCamZoom = PictureZoom.fromText(prefs.getString(PREF_MAP_CAM_ZOOM, null))
 
+    /** Starts the map cam once there are feeds to go with it and it's on air. */
+    private fun ensureMapCam() {
+        if (mapCamFeed != null || tiles.isEmpty()) return
+        val login = mapCamLogin ?: return
+        mapCamFeed = FeedPlayer(context, scope, twitch).apply {
+            setAudible(false)
+            setVideo(true, 1920, 1080, source = true)
+            player.playWhenReady = playing
+            load(Channel("Map cam", login = login))
+        }
+    }
+
     fun toggleMapDrawer() {
-        val open = mapCamFeed
-        if (open != null) closeMapDrawer()
-        else mapCamLogin?.let { login ->
-            mapCamFeed = FeedPlayer(context, scope, twitch).apply {
-                setAudible(false)
-                setVideo(true, 1920, 1080, source = true)
-                player.playWhenReady = playing
-                load(Channel("Map cam", login = login))
-            }
+        mapDrawerOpen = !mapDrawerOpen
+        if (!mapDrawerOpen) {
+            mapDrawerTop = Float.MAX_VALUE
+            storeMapCamZoom()
         }
         showChrome()
     }
 
-    private fun closeMapDrawer() {
+    private fun stopMapCam() {
         mapCamFeed?.release()
         mapCamFeed = null
+        mapDrawerOpen = false
         mapDrawerTop = Float.MAX_VALUE
         storeMapCamZoom()
     }
@@ -1363,8 +1376,11 @@ class AppState(
     fun setPip(on: Boolean) {
         inPip = on
         val shown = pipTile()
-        // The pop-out shows one feed; the drawer has no place in it.
-        if (on) closeMapDrawer()
+        // The pop-out shows one feed; the map cam rests, and goes back to live on return.
+        mapCamFeed?.player?.let {
+            if (!on && playing) it.seekToDefaultPosition()
+            it.playWhenReady = playing && !on
+        }
         tiles.forEach { tile ->
             tile.feed.player.playWhenReady = playing && (!on || tile === shown || tile.audible)
         }
@@ -1415,7 +1431,7 @@ class AppState(
     fun stopAll() {
         // Closing the viewer keeps the session, so Continue watching can bring it back.
         saveWatch()
-        closeMapDrawer()
+        stopMapCam()
         tiles.forEach { it.feed.release() }
         tiles.clear()
         browsing = false
